@@ -283,6 +283,50 @@
       window.addEventListener('mouseup', onUp, true);
     });
 
+    const addResizeHandle = (mode: 'e' | 's' | 'se', css: string): void => {
+      const grip = document.createElement('div');
+      grip.style.cssText = `position:absolute;pointer-events:auto;user-select:none;${css}`;
+      grip.addEventListener('mousedown', (event: MouseEvent) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        stopTracking();
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const origW = current.width;
+        const origH = current.height;
+        const maxW = Math.max(16, document.documentElement.clientWidth - current.x);
+        const maxH = Math.max(16, document.documentElement.clientHeight - current.y);
+
+        const onMove = (e: MouseEvent): void => {
+          current = {
+            ...current,
+            width: mode === 's' ? origW : Math.max(16, Math.min(maxW, origW + (e.clientX - startX))),
+            height: mode === 'e' ? origH : Math.max(16, Math.min(maxH, origH + (e.clientY - startY))),
+          };
+          applyPos();
+        };
+
+        const onUp = (): void => {
+          window.removeEventListener('mousemove', onMove, true);
+          window.removeEventListener('mouseup', onUp, true);
+          void chrome.runtime.sendMessage({
+            type: 'RECORD_GUIDE_MOVED',
+            rect: current,
+            viewport: viewSize(),
+          }).catch(() => undefined);
+        };
+
+        window.addEventListener('mousemove', onMove, true);
+        window.addEventListener('mouseup', onUp, true);
+      });
+      box.append(grip);
+    };
+
+    addResizeHandle('e', 'top:0;right:-5px;width:10px;height:100%;cursor:ew-resize;');
+    addResizeHandle('s', 'left:0;bottom:-5px;width:100%;height:10px;cursor:ns-resize;');
+    addResizeHandle('se', 'right:-6px;bottom:-6px;width:12px;height:12px;background:#e04f4f;border:1px solid #fff;border-radius:2px;cursor:nwse-resize;');
+
     box.append(handle);
     document.documentElement.append(box);
     guideBox = box;
