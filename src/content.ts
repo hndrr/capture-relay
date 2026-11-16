@@ -167,11 +167,16 @@
     if (!rect) return;
     let current: BoxRect = { ...rect };
     const box = document.createElement('div');
+    const handle = document.createElement('div');
     const applyPos = (): void => {
       box.style.left = `${current.x - 2}px`;
       box.style.top = `${current.y - 2}px`;
       box.style.width = `${current.width + 4}px`;
       box.style.height = `${current.height + 4}px`;
+      const insideTop = current.y < 24;
+      handle.style.top = insideTop ? '2px' : '-22px';
+      handle.style.left = insideTop ? '2px' : '-2px';
+      handle.style.borderRadius = insideTop ? '3px' : '4px 4px 0 0';
     };
     box.style.cssText = [
       'position:fixed',
@@ -182,7 +187,6 @@
       'pointer-events:none',
       'z-index:2147483645',
     ].join(';');
-    applyPos();
 
     let trackingActive = Boolean(selector);
     let notifyTimer: number | null = null;
@@ -230,21 +234,18 @@
       stopTracking();
     };
 
-    const handle = document.createElement('div');
     handle.textContent = '⋮⋮ 移動';
     handle.style.cssText = [
       'position:absolute',
-      'left:-2px',
-      'top:-22px',
       'padding:2px 7px',
       'font:600 11px/16px sans-serif',
       'color:#fff',
       'background:#e04f4f',
-      'border-radius:4px 4px 0 0',
       'cursor:grab',
       'user-select:none',
       'pointer-events:auto',
     ].join(';');
+    applyPos();
 
     handle.addEventListener('pointerdown', (event: PointerEvent) => {
       if (event.button !== 0) return;
@@ -333,7 +334,7 @@
 
     addResizeHandle('e', 'top:0;right:-5px;width:10px;height:100%;cursor:ew-resize;');
     addResizeHandle('s', 'left:0;bottom:-5px;width:100%;height:10px;cursor:ns-resize;');
-    addResizeHandle('se', 'right:-6px;bottom:-6px;width:12px;height:12px;background:#e04f4f;border:1px solid #fff;border-radius:2px;cursor:nwse-resize;');
+    addResizeHandle('se', 'right:-12px;bottom:-12px;width:12px;height:12px;background:#e04f4f;border:1px solid #fff;border-radius:2px;cursor:nwse-resize;');
 
     box.append(handle);
     document.documentElement.append(box);

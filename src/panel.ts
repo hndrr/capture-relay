@@ -306,7 +306,11 @@ async function createCroppedStream(
     };
     const drawFrame = (): void => {
       if (video.readyState >= 2 && clipped) {
-        ctx.drawImage(video, clipped.x, clipped.y, clipped.width, clipped.height, 0, 0, canvas.width, canvas.height);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const scale = Math.min(canvas.width / clipped.width, canvas.height / clipped.height);
+        const dw = Math.max(1, Math.round(clipped.width * scale));
+        const dh = Math.max(1, Math.round(clipped.height * scale));
+        ctx.drawImage(video, clipped.x, clipped.y, clipped.width, clipped.height, 0, 0, dw, dh);
       }
     };
     drawFrame();
@@ -358,10 +362,16 @@ async function prepare(sourceOverride?: CaptureSource): Promise<void> {
     const video = { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: id } };
     stream = await navigator.mediaDevices.getUserMedia({ audio: audio as unknown as MediaTrackConstraints, video: video as unknown as MediaTrackConstraints });
     if (stream.getAudioTracks().length) {
-      monitor = new AudioContext();
-      const input = monitor.createMediaStreamSource(stream);
-      input.connect(monitor.destination);
-      await monitor.resume();
+      try {
+        monitor = new AudioContext();
+        const input = monitor.createMediaStreamSource(stream);
+        input.connect(monitor.destination);
+        await monitor.resume();
+      } catch (e) {
+        stream.getTracks().forEach(t => t.stop());
+        if (monitor) void monitor.close();
+        throw e;
+      }
     }
   } else if (source === 'tab') {
     stream = await chooseDesktopStream(['tab', 'audio']);
@@ -489,7 +499,7 @@ async function startRecording(trigger?: TriggerFired, sourceOverride?: CaptureSo
   if (!active) throw new Error('録画ソースの準備に失敗しました。');
   if (active.recorder?.state === 'recording') return;
   if (trigger && active.tabId !== undefined && active.tabId !== trigger.tabId) throw new Error('DOMトリガーのタブと収録タブが一致しません。');
-  if (!active.stream.active) throw new Error('収録ストリームが終了しています。');
+  if (!(active.rawStream ?? active.stream).active) throw new Error('収録ストリームが終了しています。');
   const audioOnly = active.stream.getVideoTracks().length === 0;
   const mime = supportedMime(audioOnly);
   const recorder = new MediaRecorder(active.stream, mime ? { mimeType: mime } : undefined);
@@ -525,7 +535,7 @@ async function startRecording(trigger?: TriggerFired, sourceOverride?: CaptureSo
           status('録画データが空です。', true);
         }
       } finally {
-        if (session === active && (audioOnly || !active.stream.active)) cleanSession();
+        if (session === active && (audioOnly || !(active.rawStream ?? active.stream).active)) cleanSession();
       }
     })().catch(error => status(humanError(error), true)).finally(updateControls);
   };
