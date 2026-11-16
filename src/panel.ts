@@ -138,10 +138,10 @@ function updateControls(): void {
   if (controls.source.value === 'display' && session === null) controls.recordArea.value = 'full';
   const area = controls.recordArea.value as RecordArea;
   controls.start.textContent = session !== null || area === 'full'
-    ? '● 録画開始'
+    ? '● 録画'
     : area === 'region'
-      ? '範囲選択'
-      : '要素選択';
+      ? '範囲指定'
+      : '要素指定';
 
   controls.micStart.disabled = busy || Boolean(isRecording) || isVideoSession;
   controls.micStop.disabled = busy || !isMicRecording;
@@ -160,18 +160,18 @@ function updateControls(): void {
 
   if (session?.startedAt && isVideoRecording) {
     const seconds = Math.floor((Date.now() - session.startedAt) / 1000);
-    controls.recordInfo.textContent = `録画中 ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} · 「■ 停止して保存」を押すと WebM を保存します。`;
+    controls.recordInfo.textContent = `録画中 ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   } else if (isVideoSession) {
-    controls.recordInfo.textContent = '準備OK。手動またはDOMトリガーで録画を開始できます。';
+    controls.recordInfo.textContent = '準備OK（トリガー待機中）';
   } else {
-    controls.recordInfo.textContent = '録画中はサイドパネルを閉じないでください。';
+    controls.recordInfo.textContent = 'WebM 形式で保存';
   }
 
   if (session?.startedAt && isMicRecording) {
     const seconds = Math.floor((Date.now() - session.startedAt) / 1000);
-    controls.micInfo.textContent = `録音中 ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} · 「■ 停止して保存」を押すと WAV を保存します。`;
+    controls.micInfo.textContent = `録音中 ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   } else {
-    controls.micInfo.textContent = '録音中はサイドパネルを閉じないでください。';
+    controls.micInfo.textContent = 'WAV 形式で保存';
   }
 }
 
