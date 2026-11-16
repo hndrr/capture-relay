@@ -217,9 +217,12 @@ async function prepare(): Promise<void> {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     } catch (error) {
-      controls.grantMic.hidden = false;
       const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
-      throw new Error(`マイク権限を取得できませんでした (${detail})。下の「マイク権限を許可するタブを開く」から許可してください。`);
+      if (detail.includes('NotAllowedError') || detail.includes('Permission')) {
+        await chrome.tabs.create({ url: chrome.runtime.getURL('panel.html?grantMic=1') });
+        throw new Error('開いたタブでマイクを「許可」してください（許可後タブは自動で閉じます）。その後もう一度「● 録画開始」を押してください。');
+      }
+      throw new Error(`マイク権限を取得できませんでした (${detail})`);
     }
   }
   controls.grantMic.hidden = true;
@@ -420,26 +423,28 @@ async function init(): Promise<void> {
       title.textContent = 'マイク権限の許可';
       const desc = document.createElement('p');
       desc.className = 'muted';
-      desc.textContent = 'Side Panel 内では Chrome の仕様上マイク許可ダイアログを出せないため、このタブから一度だけマイクを許可してください。';
+      desc.textContent = '上のダイアログで「許可」を押すと、このタブは自動で閉じます。';
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'primary';
-      btn.textContent = 'マイクを許可する';
-      btn.addEventListener('click', () => {
-        void (async () => {
-          try {
-            const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            s.getTracks().forEach(t => t.stop());
-            status('マイクを許可しました。このタブを閉じてサイドパネルに戻ってください。');
-            btn.disabled = true;
-            btn.textContent = '許可済み';
-          } catch (e) {
-            status(humanError(e), true);
-          }
-        })();
-      });
+      btn.textContent = '再試行する';
+      btn.hidden = true;
+      const requestMic = async (): Promise<void> => {
+        btn.hidden = true;
+        try {
+          const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          s.getTracks().forEach(t => t.stop());
+          status('マイクを許可しました。');
+          window.close();
+        } catch (e) {
+          btn.hidden = false;
+          status(humanError(e), true);
+        }
+      };
+      btn.addEventListener('click', () => { void requestMic(); });
       card.append(title, desc, btn);
       main.append(controls.errorBanner, card);
+      void requestMic();
     }
     return;
   }
