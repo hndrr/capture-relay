@@ -255,10 +255,10 @@ async function chooseDesktopStream(sources: chrome.desktopCapture.DesktopCapture
   });
 }
 
-async function syncRecordGuide(rect: BoxRect | null, targetTabId = pendingRecTabId ?? selectedTabId): Promise<void> {
+async function syncRecordGuide(rect: BoxRect | null, targetTabId = pendingRecTabId ?? selectedTabId, selector?: string): Promise<void> {
   if (targetTabId === null) return;
   try {
-    await chrome.tabs.sendMessage(targetTabId, { type: 'SET_RECORD_GUIDE', rect });
+    await chrome.tabs.sendMessage(targetTabId, { type: 'SET_RECORD_GUIDE', rect, ...(selector ? { selector } : {}) });
   } catch {
     /* ignore if tab was closed or cannot receive messages */
   }
@@ -564,7 +564,7 @@ function wire(): void {
     const picked = await injectPicker(mode);
     pendingRecPick = picked;
     pendingRecTabId = targetId;
-    await syncRecordGuide(picked.rect, targetId);
+    await syncRecordGuide(picked.rect, targetId, picked.selector);
     if (picked.selector) controls.selector.value = picked.selector;
     status(`録画範囲を設定: ${Math.round(picked.rect.width)}×${Math.round(picked.rect.height)}`);
   };

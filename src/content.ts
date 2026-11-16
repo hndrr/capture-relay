@@ -157,8 +157,11 @@
   }
 
   let guideBox: HTMLDivElement | null = null;
+  let guideCleanup: (() => void) | null = null;
 
-  function setRecordGuide(rect: BoxRect | null): void {
+  function setRecordGuide(rect: BoxRect | null, selector?: string): void {
+    guideCleanup?.();
+    guideCleanup = null;
     guideBox?.remove();
     guideBox = null;
     if (!rect) return;
@@ -181,6 +184,52 @@
     ].join(';');
     applyPos();
 
+    let trackingActive = Boolean(selector);
+    let notifyTimer: number | null = null;
+    const notifyMoved = (): void => {
+      if (notifyTimer !== null) window.clearTimeout(notifyTimer);
+      notifyTimer = window.setTimeout(() => {
+        notifyTimer = null;
+        void chrome.runtime.sendMessage({
+          type: 'RECORD_GUIDE_MOVED',
+          rect: current,
+          viewport: viewSize(),
+        }).catch(() => undefined);
+      }, 60);
+    };
+
+    const syncFromElement = (): void => {
+      if (!trackingActive || !selector) return;
+      const target = document.querySelector(selector);
+      if (!target) return;
+      const next = rectOf(target);
+      if (next.width < 1 || next.height < 1) return;
+      current = next;
+      applyPos();
+      notifyMoved();
+    };
+
+    const resizeObs = selector ? new ResizeObserver(syncFromElement) : null;
+    if (selector) {
+      const target = document.querySelector(selector);
+      if (target) resizeObs?.observe(target);
+      window.addEventListener('resize', syncFromElement, { passive: true });
+      window.addEventListener('scroll', syncFromElement, { capture: true, passive: true });
+    }
+
+    const stopTracking = (): void => {
+      if (!trackingActive) return;
+      trackingActive = false;
+      resizeObs?.disconnect();
+      window.removeEventListener('resize', syncFromElement);
+      window.removeEventListener('scroll', syncFromElement, true);
+    };
+
+    guideCleanup = () => {
+      if (notifyTimer !== null) window.clearTimeout(notifyTimer);
+      stopTracking();
+    };
+
     const handle = document.createElement('div');
     handle.textContent = '⋮⋮ 移動';
     handle.style.cssText = [
@@ -201,6 +250,7 @@
       if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
+      stopTracking();
       const startX = event.clientX;
       const startY = event.clientY;
       const origX = current.x;
@@ -241,7 +291,7 @@
   chrome.runtime.onMessage.addListener((message, _sender, respond) => {
     if (message.type !== 'CONFIGURE_RULE' && message.type !== 'PICK' && message.type !== 'SET_RECORD_GUIDE') return;
     if (message.type === 'SET_RECORD_GUIDE') {
-      setRecordGuide(message.rect);
+      setRecordGuide(message.rect, message.selector);
       respond({ ok: true, data: null });
       return;
     }
