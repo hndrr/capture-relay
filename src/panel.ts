@@ -30,7 +30,6 @@ const controls = {
   disarm: $<HTMLButtonElement>('disarm-trigger'),
   saveFolder: $<HTMLInputElement>('save-folder'),
   saveAs: $<HTMLInputElement>('save-as'),
-  errorBanner: $<HTMLDivElement>('error-banner'),
   grantMic: $<HTMLButtonElement>('grant-mic'),
 };
 
@@ -60,9 +59,7 @@ const blobURLs = new Set<string>();
 function status(message: string, error = false): void {
   controls.notice.textContent = message;
   controls.notice.title = message;
-  controls.notice.style.color = error ? '#ffb6ae' : '#a8a9b7';
-  controls.errorBanner.hidden = !error;
-  controls.errorBanner.textContent = error ? message : '';
+  controls.notice.parentElement?.classList.toggle('is-error', error);
 }
 
 function tabId(): number {
@@ -527,7 +524,7 @@ async function init(): Promise<void> {
       };
       btn.addEventListener('click', () => { void requestMic(); });
       card.append(title, desc, btn);
-      main.append(controls.errorBanner, card);
+      main.append(card);
       void requestMic();
     }
     return;
