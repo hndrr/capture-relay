@@ -136,6 +136,12 @@ function updateControls(): void {
   controls.source.disabled = busy || session !== null;
   controls.recordArea.disabled = busy || session !== null || controls.source.value === 'display';
   if (controls.source.value === 'display' && session === null) controls.recordArea.value = 'full';
+  const area = controls.recordArea.value as RecordArea;
+  controls.start.textContent = session !== null || area === 'full'
+    ? '● 録画開始'
+    : area === 'region'
+      ? '範囲を選んで録画開始'
+      : '要素を選んで録画開始';
 
   controls.micStart.disabled = busy || Boolean(isRecording) || isVideoSession;
   controls.micStop.disabled = busy || !isMicRecording;
@@ -544,6 +550,7 @@ function wire(): void {
     status(`選択: ${picked.selector ?? ''}`);
   }));
   controls.source.addEventListener('change', updateControls);
+  controls.recordArea.addEventListener('change', updateControls);
   controls.prepare.addEventListener('click', () => void run(() => prepare()));
   controls.grantMic.addEventListener('click', () => void run(async () => {
     await chrome.tabs.create({ url: chrome.runtime.getURL('panel.html?grantMic=1') });
