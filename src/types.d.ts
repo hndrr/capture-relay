@@ -63,6 +63,13 @@ declare namespace chrome {
   namespace tabCapture {
     function getMediaStreamId(options: { targetTabId?: number }): Promise<string>;
   }
+  namespace desktopCapture {
+    type DesktopCaptureSourceType = 'screen' | 'window' | 'tab' | 'audio';
+    function chooseDesktopMedia(
+      sources: DesktopCaptureSourceType[],
+      callback: (streamId: string, options?: { canRequestAudioTrack?: boolean }) => void,
+    ): number;
+  }
   namespace storage {
     type StorageData = { [key: string]: unknown };
     const local: {

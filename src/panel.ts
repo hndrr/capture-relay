@@ -34,7 +34,7 @@ const EVENTS_KEY = 'captureRelayEvents';
 const ARMED_KEY = 'captureRelayArmed';
 const SETTINGS_KEY = 'captureRelaySettings';
 
-type CaptureSource = 'display' | 'mic';
+type CaptureSource = 'tab' | 'display' | 'mic';
 type StreamSession = {
   source: CaptureSource;
   stream: MediaStream;
@@ -194,18 +194,35 @@ function cleanSession(): void {
   updateControls();
 }
 
+async function chooseDesktopStream(sources: chrome.desktopCapture.DesktopCaptureSourceType[]): Promise<MediaStream> {
+  const chosen = await new Promise<{ streamId: string; canRequestAudioTrack: boolean }>((resolve, reject) => {
+    chrome.desktopCapture.chooseDesktopMedia(sources, (streamId, options) => {
+      if (!streamId) {
+        reject(new Error('共有がキャンセルされました。'));
+        return;
+      }
+      resolve({ streamId, canRequestAudioTrack: Boolean(options?.canRequestAudioTrack) });
+    });
+  });
+  const video = { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: chosen.streamId } };
+  const audio = chosen.canRequestAudioTrack
+    ? { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: chosen.streamId } }
+    : false;
+  return navigator.mediaDevices.getUserMedia({
+    video: video as unknown as MediaTrackConstraints,
+    audio: audio as unknown as MediaTrackConstraints | boolean,
+  });
+}
+
 async function prepare(): Promise<void> {
   if (session) throw new Error('先に現在のソースを解放してください。');
   const source = controls.source.value as CaptureSource;
   let stream: MediaStream;
   let monitor: AudioContext | undefined;
-  if (source === 'display') {
-    stream = await navigator.mediaDevices.getDisplayMedia({
-      video: { displaySurface: 'browser' } as MediaTrackConstraints,
-      audio: { suppressLocalAudioPlayback: false } as MediaTrackConstraints,
-      selfBrowserSurface: 'include',
-      systemAudio: 'include',
-    } as DisplayMediaStreamOptions);
+  if (source === 'tab') {
+    stream = await chooseDesktopStream(['tab', 'audio']);
+  } else if (source === 'display') {
+    stream = await chooseDesktopStream(['screen', 'window', 'audio']);
   } else {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
