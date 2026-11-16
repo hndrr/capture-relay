@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump (use "current" to release the current manifest version)
+        type: choice
+        options:
+          - current
+          - patch
+          - minor
+          - major
+        default: current
+      prerelease:
+        description: Mark as pre-release
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: capture-relay-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve and bump version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+          if [ "$BUMP" != "current" ]; then
+            npm version "$BUMP" --no-git-tag-version
+            VERSION=$(node -p "require('./package.json').version")
+            node -e '
+              const fs = require("node:fs");
+              const m = JSON.parse(fs.readFileSync("public/manifest.json", "utf8"));
+              m.version = process.argv[1];
+              fs.writeFileSync("public/manifest.json", JSON.stringify(m, null, 2) + "\n");
+            ' "$VERSION"
+
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package.json package-lock.json public/manifest.json
+            git commit -m "chore(release): v${VERSION}"
+            git push origin HEAD:main
+          else
+            VERSION=$(node -p "JSON.parse(require('node:fs').readFileSync('public/manifest.json', 'utf8')).version")
+          fi
+
+          if git rev-parse "refs/tags/v${VERSION}" >/dev/null 2>&1; then
+            echo "::error::Tag v${VERSION} already exists. Choose patch/minor/major."
+            exit 1
+          fi
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Package extension
+        run: npm run package
+
+      - name: Verify zip contents
+        run: |
+          zip_file=$(ls release/*.zip | head -n 1)
+          unzip -l "$zip_file"
+          unzip -Z1 "$zip_file" | grep -qx "manifest.json"
+
+      - name: Create GitHub Release and Tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TARGET_SHA: ${{ steps.version.outputs.sha }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+          args=(
+            "v${VERSION}"
+            release/*.zip
+            --target "$TARGET_SHA"
+            --title "v${VERSION}"
+            --generate-notes
+          )
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          gh release create "${args[@]}"
