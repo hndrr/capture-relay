@@ -20,12 +20,15 @@ export function clampCaptureRect(
   return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
 }
 
+const RESERVED_WIN_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
+
 export function sanitizeSaveFolder(folder?: string): string {
   const segments = (folder ?? '')
     .replace(/\\/g, '/')
     .split('/')
-    .map(part => part.trim().replace(/[<>:"|?*\x00-\x1f]/g, '-'))
-    .filter(part => part && part !== '.' && part !== '..');
+    .map(part => part.trim().replace(/[<>:"|?*\x00-\x1f]/g, '-').replace(/[. ]+$/, ''))
+    .filter(part => part && part !== '.' && part !== '..')
+    .map(part => (RESERVED_WIN_NAMES.test(part) ? `_${part}` : part));
   return segments.length ? segments.join('/') : 'capture-relay';
 }
 

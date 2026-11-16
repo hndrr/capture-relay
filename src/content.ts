@@ -246,18 +246,19 @@
       'pointer-events:auto',
     ].join(';');
 
-    handle.addEventListener('mousedown', (event: MouseEvent) => {
+    handle.addEventListener('pointerdown', (event: PointerEvent) => {
       if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
       stopTracking();
+      handle.setPointerCapture(event.pointerId);
       const startX = event.clientX;
       const startY = event.clientY;
       const origX = current.x;
       const origY = current.y;
       handle.style.cursor = 'grabbing';
 
-      const onMove = (e: MouseEvent): void => {
+      const onMove = (e: PointerEvent): void => {
         const maxX = Math.max(0, document.documentElement.clientWidth - current.width);
         const maxY = Math.max(0, document.documentElement.clientHeight - current.height);
         current = {
@@ -268,9 +269,11 @@
         applyPos();
       };
 
-      const onUp = (): void => {
-        window.removeEventListener('mousemove', onMove, true);
-        window.removeEventListener('mouseup', onUp, true);
+      const onUp = (e: PointerEvent): void => {
+        if (handle.hasPointerCapture(e.pointerId)) handle.releasePointerCapture(e.pointerId);
+        handle.removeEventListener('pointermove', onMove);
+        handle.removeEventListener('pointerup', onUp);
+        handle.removeEventListener('pointercancel', onUp);
         handle.style.cursor = 'grab';
         void chrome.runtime.sendMessage({
           type: 'RECORD_GUIDE_MOVED',
@@ -279,18 +282,20 @@
         }).catch(() => undefined);
       };
 
-      window.addEventListener('mousemove', onMove, true);
-      window.addEventListener('mouseup', onUp, true);
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', onUp);
+      handle.addEventListener('pointercancel', onUp);
     });
 
     const addResizeHandle = (mode: 'e' | 's' | 'se', css: string): void => {
       const grip = document.createElement('div');
-      grip.style.cssText = `position:absolute;pointer-events:auto;user-select:none;${css}`;
-      grip.addEventListener('mousedown', (event: MouseEvent) => {
+      grip.style.cssText = `position:absolute;pointer-events:auto;user-select:none;touch-action:none;${css}`;
+      grip.addEventListener('pointerdown', (event: PointerEvent) => {
         if (event.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
         stopTracking();
+        grip.setPointerCapture(event.pointerId);
         const startX = event.clientX;
         const startY = event.clientY;
         const origW = current.width;
@@ -298,7 +303,7 @@
         const maxW = Math.max(16, document.documentElement.clientWidth - current.x);
         const maxH = Math.max(16, document.documentElement.clientHeight - current.y);
 
-        const onMove = (e: MouseEvent): void => {
+        const onMove = (e: PointerEvent): void => {
           current = {
             ...current,
             width: mode === 's' ? origW : Math.max(16, Math.min(maxW, origW + (e.clientX - startX))),
@@ -307,9 +312,11 @@
           applyPos();
         };
 
-        const onUp = (): void => {
-          window.removeEventListener('mousemove', onMove, true);
-          window.removeEventListener('mouseup', onUp, true);
+        const onUp = (e: PointerEvent): void => {
+          if (grip.hasPointerCapture(e.pointerId)) grip.releasePointerCapture(e.pointerId);
+          grip.removeEventListener('pointermove', onMove);
+          grip.removeEventListener('pointerup', onUp);
+          grip.removeEventListener('pointercancel', onUp);
           void chrome.runtime.sendMessage({
             type: 'RECORD_GUIDE_MOVED',
             rect: current,
@@ -317,8 +324,9 @@
           }).catch(() => undefined);
         };
 
-        window.addEventListener('mousemove', onMove, true);
-        window.addEventListener('mouseup', onUp, true);
+        grip.addEventListener('pointermove', onMove);
+        grip.addEventListener('pointerup', onUp);
+        grip.addEventListener('pointercancel', onUp);
       });
       box.append(grip);
     };

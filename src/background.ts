@@ -72,7 +72,8 @@ async function capture(message: Extract<ExtMessage, { type: 'CAPTURE' }>): Promi
   }
   const settings = await readSaveSettings();
   const filename = exportFilename(message.prefix ?? 'screenshot', Date.now(), 'png', settings.saveFolder);
-  await chrome.downloads.download({ url: finalData, filename, saveAs: settings.saveAs });
+  const saveAs = message.prefix === 'trigger' ? false : settings.saveAs;
+  await chrome.downloads.download({ url: finalData, filename, saveAs });
   await log('screenshot', filename, message.tabId);
   return filename;
 }

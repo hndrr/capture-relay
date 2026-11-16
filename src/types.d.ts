@@ -57,6 +57,8 @@ declare namespace chrome {
     function get(tabId: number): Promise<Tab>;
     function update(tabId: number, options: { active: boolean }): Promise<Tab>;
     function create(options: { url: string }): Promise<Tab>;
+    function getCurrent(): Promise<Tab | undefined>;
+    function remove(tabIds: number | number[]): Promise<void>;
     function captureVisibleTab(windowId?: number, options?: { format?: 'png' | 'jpeg' }): Promise<string>;
     function sendMessage<T = unknown>(tabId: number, message: ExtMessage): Promise<ExtResponse<T>>;
   }

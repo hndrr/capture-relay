@@ -47,6 +47,7 @@ type StreamSession = {
   stream: MediaStream;
   rawStream?: MediaStream;
   cleanupCrop?: () => void;
+  updateCrop?: (rect: BoxRect, viewport: ViewSize) => void;
   monitor?: AudioContext;
   tabId?: number;
   recorder?: MediaRecorder;
@@ -139,7 +140,6 @@ function updateControls(): void {
   controls.stop.disabled = busy || !isVideoRecording;
   controls.source.disabled = busy || session !== null;
   const isDisplay = controls.source.value === 'display';
-  if (isDisplay && session === null) pendingRecPick = null;
   controls.pickRecRegion.disabled = busy || session !== null || isDisplay;
   controls.pickRecElement.disabled = busy || session !== null || isDisplay;
   controls.clearRecArea.disabled = busy || session !== null || pendingRecPick === null;
@@ -266,58 +266,68 @@ async function syncRecordGuide(rect: BoxRect | null, targetTabId = pendingRecTab
 
 async function createCroppedStream(
   rawStream: MediaStream,
-  rect: BoxRect,
-  viewport: ViewSize,
-): Promise<{ stream: MediaStream; cleanup: () => void }> {
+  initialRect: BoxRect,
+  initialViewport: ViewSize,
+): Promise<{ stream: MediaStream; cleanup: () => void; updateRegion: (rect: BoxRect, viewport: ViewSize) => void }> {
   const video = document.createElement('video');
   video.muted = true;
   video.playsInline = true;
   video.srcObject = rawStream;
-  await new Promise<void>((resolve, reject) => {
-    const onLoaded = (): void => { cleanupListeners(); resolve(); };
-    const onError = (): void => { cleanupListeners(); reject(new Error('映像ストリームの読み込みに失敗しました。')); };
-    const cleanupListeners = (): void => {
-      video.removeEventListener('loadedmetadata', onLoaded);
-      video.removeEventListener('error', onError);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(() => { cleanupListeners(); reject(new Error('映像ストリームの待機がタイムアウトしました。')); }, 5000);
+      const onLoaded = (): void => { cleanupListeners(); resolve(); };
+      const onError = (): void => { cleanupListeners(); reject(new Error('映像ストリームの読み込みに失敗しました。')); };
+      const cleanupListeners = (): void => {
+        window.clearTimeout(timeout);
+        video.removeEventListener('loadedmetadata', onLoaded);
+        video.removeEventListener('error', onError);
+      };
+      video.addEventListener('loadedmetadata', onLoaded);
+      video.addEventListener('error', onError);
+    });
+    await video.play();
+    let cropRect = initialRect;
+    let cropViewport = initialViewport;
+    let clipped = clampCaptureRect(cropRect, cropViewport, { width: video.videoWidth, height: video.videoHeight });
+    if (!clipped) throw new Error('選択範囲が画面の外にあります。');
+    const canvas = document.createElement('canvas');
+    canvas.width = clipped.width;
+    canvas.height = clipped.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('録画用の描画コンテキストを作成できません。');
+    const updateRegion = (rect: BoxRect, viewport: ViewSize): void => {
+      cropRect = rect;
+      cropViewport = viewport;
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        const next = clampCaptureRect(cropRect, cropViewport, { width: video.videoWidth, height: video.videoHeight });
+        if (next) clipped = next;
+      }
     };
-    video.addEventListener('loadedmetadata', onLoaded);
-    video.addEventListener('error', onError);
-  });
-  await video.play();
-  const clipped = clampCaptureRect(rect, viewport, { width: video.videoWidth, height: video.videoHeight });
-  if (!clipped) {
+    const drawFrame = (): void => {
+      if (video.readyState >= 2 && clipped) {
+        ctx.drawImage(video, clipped.x, clipped.y, clipped.width, clipped.height, 0, 0, canvas.width, canvas.height);
+      }
+    };
+    drawFrame();
+    const timer = window.setInterval(drawFrame, 1000 / 30);
+    const croppedStream = canvas.captureStream(30);
+    for (const track of rawStream.getAudioTracks()) croppedStream.addTrack(track);
+    return {
+      stream: croppedStream,
+      updateRegion,
+      cleanup: () => {
+        window.clearInterval(timer);
+        video.pause();
+        video.srcObject = null;
+      },
+    };
+  } catch (error) {
     video.pause();
     video.srcObject = null;
     rawStream.getTracks().forEach(t => t.stop());
-    throw new Error('選択範囲が画面の外にあります。');
+    throw error;
   }
-  const canvas = document.createElement('canvas');
-  canvas.width = clipped.width;
-  canvas.height = clipped.height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    video.pause();
-    video.srcObject = null;
-    rawStream.getTracks().forEach(t => t.stop());
-    throw new Error('録画用の描画コンテキストを作成できません。');
-  }
-  const drawFrame = (): void => {
-    if (video.readyState >= 2) {
-      ctx.drawImage(video, clipped.x, clipped.y, clipped.width, clipped.height, 0, 0, clipped.width, clipped.height);
-    }
-  };
-  drawFrame();
-  const timer = window.setInterval(drawFrame, 1000 / 30);
-  const croppedStream = canvas.captureStream(30);
-  for (const track of rawStream.getAudioTracks()) croppedStream.addTrack(track);
-  return {
-    stream: croppedStream,
-    cleanup: () => {
-      window.clearInterval(timer);
-      video.pause();
-      video.srcObject = null;
-    },
-  };
 }
 
 async function prepare(sourceOverride?: CaptureSource): Promise<void> {
@@ -325,6 +335,9 @@ async function prepare(sourceOverride?: CaptureSource): Promise<void> {
   const source = sourceOverride ?? (controls.source.value as CaptureSource);
   const picked = source === 'mic' ? null : pendingRecPick;
   if (picked && source === 'display') throw new Error('範囲・DOM要素の録画は「現在のタブ」または「タブを選択」でのみ利用できます。');
+  if (picked && pendingRecTabId !== null && pendingRecTabId !== tabId()) {
+    throw new Error('録画範囲を指定したタブと対象タブが異なります。対象タブを合わせるか「全体に戻す」を押してください。');
+  }
   let stream: MediaStream;
   let rawStream: MediaStream | undefined;
   let cleanupCrop: (() => void) | undefined;
@@ -337,7 +350,7 @@ async function prepare(sourceOverride?: CaptureSource): Promise<void> {
     } catch (error) {
       const detail = humanError(error);
       if (detail.includes('activeTab') || detail.includes('invoked')) {
-        throw new Error('このタブではまだ「即録画」の権限が有効になっていません。サイドパネルを閉じた状態で対象タブを開き、右上のアイコンからサイドパネルを開き直すか、「Chrome タブを選択」を使用してください。');
+        throw new Error('このタブではまだ「現在のタブ」の録画権限が有効になっていません。対象タブ上で右上のアイコンを押すか、「タブを選択」を使用してください。');
       }
       throw error;
     }
@@ -360,19 +373,22 @@ async function prepare(sourceOverride?: CaptureSource): Promise<void> {
     } catch (error) {
       const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
       if (detail.includes('NotAllowedError') || detail.includes('Permission')) {
+        controls.grantMic.hidden = false;
         await chrome.tabs.create({ url: chrome.runtime.getURL('panel.html?grantMic=1') });
-        throw new Error('開いたタブでマイクを「許可」してください（許可後タブは自動で閉じます）。その後もう一度「● 録音開始」を押してください。');
+        throw new Error('開いたタブでマイクを「許可」してください（許可後タブは自動で閉じます）。その後もう一度「● 録音」を押してください。');
       }
       throw new Error(`マイク権限を取得できませんでした (${detail})`);
     }
   }
   controls.grantMic.hidden = true;
+  let updateCrop: ((rect: BoxRect, viewport: ViewSize) => void) | undefined;
   if (picked) {
     rawStream = stream;
     try {
       const cropped = await createCroppedStream(rawStream, picked.rect, picked.viewport);
       stream = cropped.stream;
       cleanupCrop = cropped.cleanup;
+      updateCrop = cropped.updateRegion;
     } catch (e) {
       if (monitor) void monitor.close();
       throw e;
@@ -384,6 +400,7 @@ async function prepare(sourceOverride?: CaptureSource): Promise<void> {
     chunks: [],
     ...(rawStream ? { rawStream } : {}),
     ...(cleanupCrop ? { cleanupCrop } : {}),
+    ...(updateCrop ? { updateCrop } : {}),
     ...(source === 'current-tab' ? { tabId: tabId() } : {}),
   };
   if (monitor) nextSession.monitor = monitor;
@@ -465,7 +482,7 @@ async function saveBlob(blob: Blob, filename: string): Promise<void> {
 
 async function startRecording(trigger?: TriggerFired, sourceOverride?: CaptureSource): Promise<void> {
   if (!session) {
-    if (trigger) throw new Error('DOMトリガーで自動録画するには、先に「事前準備（トリガー用）」を押してください。');
+    if (trigger) throw new Error('DOMトリガーで自動録画するには、先に「事前準備」を押してください。');
     await prepare(sourceOverride);
   }
   const active = session;
@@ -484,19 +501,32 @@ async function startRecording(trigger?: TriggerFired, sourceOverride?: CaptureSo
   recorder.onerror = () => { status('録画エラーが発生しました。', true); };
   recorder.onstop = () => {
     void (async () => {
-      const timestamp = active.startedAt ?? Date.now();
-      const blob = new Blob(active.chunks, { type: recorder.mimeType || (audioOnly ? 'audio/webm' : 'video/webm') });
-      if (blob.size > 0) {
-        const outBlob = audioOnly ? await blobToWav(blob) : blob;
-        const file = exportFilename(audioOnly ? 'audio' : 'video', timestamp, audioOnly ? 'wav' : 'webm', saveSettings.saveFolder);
-        await saveBlob(outBlob, file);
-        await addLog('saved', `${file} (${Math.round(outBlob.size / 1024)} KiB)`);
-        status(`保存: ${file}`);
-      } else {
-        await addLog('error', '録画データが空でした');
-        status('録画データが空です。', true);
+      try {
+        const timestamp = active.startedAt ?? Date.now();
+        const blob = new Blob(active.chunks, { type: recorder.mimeType || (audioOnly ? 'audio/webm' : 'video/webm') });
+        if (blob.size > 0) {
+          let outBlob = blob;
+          let ext: 'wav' | 'webm' = 'webm';
+          if (audioOnly) {
+            try {
+              outBlob = await blobToWav(blob);
+              ext = 'wav';
+            } catch {
+              outBlob = blob;
+              ext = 'webm';
+            }
+          }
+          const file = exportFilename(audioOnly ? 'audio' : 'video', timestamp, ext, saveSettings.saveFolder);
+          await saveBlob(outBlob, file);
+          await addLog('saved', `${file} (${Math.round(outBlob.size / 1024)} KiB)`);
+          status(`保存: ${file}`);
+        } else {
+          await addLog('error', '録画データが空でした');
+          status('録画データが空です。', true);
+        }
+      } finally {
+        if (session === active && (audioOnly || !active.stream.active)) cleanSession();
       }
-      if (session === active && (audioOnly || !active.stream.active)) cleanSession();
     })().catch(error => status(humanError(error), true)).finally(updateControls);
   };
   recorder.start(250);
@@ -557,7 +587,14 @@ function wire(): void {
     controls.selector.value = picked.selector ?? '';
     status(`選択: ${picked.selector ?? ''}`);
   }));
-  controls.source.addEventListener('change', updateControls);
+  controls.source.addEventListener('change', () => {
+    if (controls.source.value === 'display' && pendingRecPick) {
+      void syncRecordGuide(null);
+      pendingRecPick = null;
+      pendingRecTabId = null;
+    }
+    updateControls();
+  });
   const pickRecordArea = async (mode: 'region' | 'element'): Promise<void> => {
     await syncRecordGuide(null);
     const targetId = tabId();
@@ -580,7 +617,7 @@ function wire(): void {
   controls.prepare.addEventListener('click', () => void run(() => prepare()));
   controls.grantMic.addEventListener('click', () => void run(async () => {
     await chrome.tabs.create({ url: chrome.runtime.getURL('panel.html?grantMic=1') });
-    status('開いたタブでマイクを許可したあと、再度「● 録音開始」を押してください。');
+    status('開いたタブでマイクを許可したあと、再度「● 録音」を押してください。');
   }));
   controls.release.addEventListener('click', () => { cleanSession(); status('ソースを解放しました。'); });
   controls.start.addEventListener('click', () => void run(() => startRecording()));
@@ -605,9 +642,11 @@ function wire(): void {
   };
   controls.saveFolder.addEventListener('change', () => void run(persistSettings));
   controls.saveAs.addEventListener('change', () => void run(persistSettings));
-  chrome.runtime.onMessage.addListener((message, _sender, _respond) => {
-    if (message.type === 'RECORD_GUIDE_MOVED' && pendingRecPick) {
+  chrome.runtime.onMessage.addListener((message, sender, _respond) => {
+    if (message.type === 'RECORD_GUIDE_MOVED') {
+      if (sender.tab?.id === undefined || sender.tab.id !== pendingRecTabId || !pendingRecPick) return;
       pendingRecPick = { ...pendingRecPick, rect: message.rect, viewport: message.viewport };
+      session?.updateCrop?.(message.rect, message.viewport);
       updateControls();
       return;
     }
@@ -669,7 +708,9 @@ async function init(): Promise<void> {
           const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
           s.getTracks().forEach(t => t.stop());
           status('マイクを許可しました。');
-          window.close();
+          const tab = await chrome.tabs.getCurrent();
+          if (tab?.id !== undefined) await chrome.tabs.remove(tab.id);
+          else window.close();
         } catch (e) {
           btn.hidden = false;
           status(humanError(e), true);
