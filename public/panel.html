@@ -35,7 +35,7 @@
         <section class="card">
           <div class="section-title"><span class="step">04</span><h2>画面録画（映像＋音声）</h2><span id="rec-badge" class="status-badge">待機中</span></div>
           <label for="capture-source">録画の対象</label>
-          <select id="capture-source"><option value="tab">Chrome タブを選択（映像＋音声）</option><option value="display">画面・ウィンドウ（映像＋音声）</option><option value="current-tab">現在のタブを即録画（ダイアログなし）</option></select>
+          <select id="capture-source"><option value="current-tab">現在のタブを即録画（ダイアログなし）</option><option value="tab">Chrome タブを選択（映像＋音声）</option><option value="display">画面・ウィンドウ（映像＋音声）</option></select>
           <p class="muted small">「● 録画開始」を押すと対象選択ダイアログが開き、そのまま録画が始まります。DOMトリガーで自動録画したい場合のみ、先に「事前準備」を押してください。</p>
           <div class="button-grid two"><button id="record-start" class="primary" type="button">● 録画開始</button><button id="record-stop" type="button" disabled>■ 停止して保存</button><button id="prepare" class="secondary" type="button">事前準備（トリガー用）</button><button id="release" class="secondary" type="button" disabled>準備を解除</button></div>
           <div id="record-info" class="muted small">録画中はサイドパネルを閉じないでください。</div>
