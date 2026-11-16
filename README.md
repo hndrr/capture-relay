@@ -97,6 +97,9 @@ npm install
 npm run typecheck
 npm run build
 npm test
+npm run package
 ```
 
-CIは未設定。`@types/chrome` に依存せず、Chrome APIのこの試作で利用する部分だけを手動宣言しています。将来の拡張では公式定義型を依存に追加して型の網羅性を高めてください。
+- `npm run package` で `dist/` をクリーンビルドし、`release/capture-relay-v<version>.zip` を生成します。
+- GitHub Actions（`.github/workflows/ci.yml`）で `main` へのpush・PR時に型チェック／ビルド／テスト／ZIPパッケージ化とArtifactアップロードを自動実行します。`v*` タグのpush時にはGitHub Releaseも作成します。
+- `@types/chrome` に依存せず、Chrome APIのこの試作で利用する部分だけを手動宣言しています。将来の拡張では公式定義型を依存に追加して型の網羅性を高めてください。
