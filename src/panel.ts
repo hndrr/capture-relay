@@ -1,4 +1,4 @@
-import { exportFilename, sanitizeSaveFolder } from './rect.js';
+import { clampCaptureRect, exportFilename, sanitizeSaveFolder } from './rect.js';
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const found = document.getElementById(id);
@@ -13,6 +13,7 @@ const controls = {
   action: $<HTMLSelectElement>('trigger-action'),
   crop: $<HTMLInputElement>('crop-trigger'),
   source: $<HTMLSelectElement>('capture-source'),
+  recordArea: $<HTMLSelectElement>('record-area'),
   notice: $<HTMLDivElement>('notice'),
   recordInfo: $<HTMLDivElement>('record-info'),
   recordBadge: $<HTMLSpanElement>('rec-badge'),
@@ -38,9 +39,12 @@ const ARMED_KEY = 'captureRelayArmed';
 const SETTINGS_KEY = 'captureRelaySettings';
 
 type CaptureSource = 'current-tab' | 'tab' | 'display' | 'mic';
+type RecordArea = 'full' | 'region' | 'element';
 type StreamSession = {
   source: CaptureSource;
   stream: MediaStream;
+  rawStream?: MediaStream;
+  cleanupCrop?: () => void;
   monitor?: AudioContext;
   tabId?: number;
   recorder?: MediaRecorder;
@@ -130,6 +134,8 @@ function updateControls(): void {
   controls.start.disabled = busy || Boolean(isRecording) || isMicSession;
   controls.stop.disabled = busy || !isVideoRecording;
   controls.source.disabled = busy || session !== null;
+  controls.recordArea.disabled = busy || session !== null || controls.source.value === 'display';
+  if (controls.source.value === 'display' && session === null) controls.recordArea.value = 'full';
 
   controls.micStart.disabled = busy || Boolean(isRecording) || isVideoSession;
   controls.micStop.disabled = busy || !isMicRecording;
@@ -212,7 +218,9 @@ async function screenshot(mode: 'viewport' | 'region' | 'element'): Promise<void
 function cleanSession(): void {
   const previous = session;
   session = null;
+  previous?.cleanupCrop?.();
   previous?.stream.getTracks().forEach(track => track.stop());
+  previous?.rawStream?.getTracks().forEach(track => track.stop());
   if (previous?.monitor) void previous.monitor.close();
   updateControls();
 }
@@ -237,10 +245,75 @@ async function chooseDesktopStream(sources: chrome.desktopCapture.DesktopCapture
   });
 }
 
+async function createCroppedStream(
+  rawStream: MediaStream,
+  rect: BoxRect,
+  viewport: ViewSize,
+): Promise<{ stream: MediaStream; cleanup: () => void }> {
+  const video = document.createElement('video');
+  video.muted = true;
+  video.playsInline = true;
+  video.srcObject = rawStream;
+  await new Promise<void>((resolve, reject) => {
+    const onLoaded = (): void => { cleanupListeners(); resolve(); };
+    const onError = (): void => { cleanupListeners(); reject(new Error('映像ストリームの読み込みに失敗しました。')); };
+    const cleanupListeners = (): void => {
+      video.removeEventListener('loadedmetadata', onLoaded);
+      video.removeEventListener('error', onError);
+    };
+    video.addEventListener('loadedmetadata', onLoaded);
+    video.addEventListener('error', onError);
+  });
+  await video.play();
+  const clipped = clampCaptureRect(rect, viewport, { width: video.videoWidth, height: video.videoHeight });
+  if (!clipped) {
+    video.pause();
+    video.srcObject = null;
+    rawStream.getTracks().forEach(t => t.stop());
+    throw new Error('選択範囲が画面の外にあります。');
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = clipped.width;
+  canvas.height = clipped.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    video.pause();
+    video.srcObject = null;
+    rawStream.getTracks().forEach(t => t.stop());
+    throw new Error('録画用の描画コンテキストを作成できません。');
+  }
+  const drawFrame = (): void => {
+    if (video.readyState >= 2) {
+      ctx.drawImage(video, clipped.x, clipped.y, clipped.width, clipped.height, 0, 0, clipped.width, clipped.height);
+    }
+  };
+  drawFrame();
+  const timer = window.setInterval(drawFrame, 1000 / 30);
+  const croppedStream = canvas.captureStream(30);
+  for (const track of rawStream.getAudioTracks()) croppedStream.addTrack(track);
+  return {
+    stream: croppedStream,
+    cleanup: () => {
+      window.clearInterval(timer);
+      video.pause();
+      video.srcObject = null;
+    },
+  };
+}
+
 async function prepare(sourceOverride?: CaptureSource): Promise<void> {
   if (session) throw new Error('先に現在のソースを解放してください。');
   const source = sourceOverride ?? (controls.source.value as CaptureSource);
+  const area: RecordArea = source === 'mic' ? 'full' : (controls.recordArea.value as RecordArea);
+  let picked: PickResult | null = null;
+  if (area !== 'full') {
+    if (source === 'display') throw new Error('範囲・DOM要素の録画は「現在のタブ」または「Chrome タブを選択」でのみ利用できます。');
+    picked = await injectPicker(area);
+    if (picked.selector) controls.selector.value = picked.selector;
+  }
   let stream: MediaStream;
+  let rawStream: MediaStream | undefined;
+  let cleanupCrop: (() => void) | undefined;
   let monitor: AudioContext | undefined;
   if (source === 'current-tab') {
     await activateTarget();
@@ -280,10 +353,29 @@ async function prepare(sourceOverride?: CaptureSource): Promise<void> {
     }
   }
   controls.grantMic.hidden = true;
-  const nextSession: StreamSession = { source, stream, chunks: [], ...(source === 'current-tab' ? { tabId: tabId() } : {}) };
+  if (picked) {
+    rawStream = stream;
+    try {
+      const cropped = await createCroppedStream(rawStream, picked.rect, picked.viewport);
+      stream = cropped.stream;
+      cleanupCrop = cropped.cleanup;
+    } catch (e) {
+      if (monitor) void monitor.close();
+      throw e;
+    }
+  }
+  const nextSession: StreamSession = {
+    source,
+    stream,
+    chunks: [],
+    ...(rawStream ? { rawStream } : {}),
+    ...(cleanupCrop ? { cleanupCrop } : {}),
+    ...(source === 'current-tab' ? { tabId: tabId() } : {}),
+  };
   if (monitor) nextSession.monitor = monitor;
   session = nextSession;
-  for (const track of stream.getTracks()) {
+  const watchedTracks = rawStream ? rawStream.getTracks() : stream.getTracks();
+  for (const track of watchedTracks) {
     track.addEventListener('ended', () => {
       if (session !== nextSession) return;
       if (nextSession.recorder?.state === 'recording') {
@@ -451,6 +543,7 @@ function wire(): void {
     controls.selector.value = picked.selector ?? '';
     status(`選択: ${picked.selector ?? ''}`);
   }));
+  controls.source.addEventListener('change', updateControls);
   controls.prepare.addEventListener('click', () => void run(() => prepare()));
   controls.grantMic.addEventListener('click', () => void run(async () => {
     await chrome.tabs.create({ url: chrome.runtime.getURL('panel.html?grantMic=1') });
