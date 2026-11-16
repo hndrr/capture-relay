@@ -606,6 +606,11 @@ function wire(): void {
   controls.saveFolder.addEventListener('change', () => void run(persistSettings));
   controls.saveAs.addEventListener('change', () => void run(persistSettings));
   chrome.runtime.onMessage.addListener((message, _sender, _respond) => {
+    if (message.type === 'RECORD_GUIDE_MOVED' && pendingRecPick) {
+      pendingRecPick = { ...pendingRecPick, rect: message.rect, viewport: message.viewport };
+      updateControls();
+      return;
+    }
     if (message.type !== 'TRIGGER_FIRED') return;
     // The background service worker logs the event and handles screenshot actions.
     if (message.rule.action === 'start' || message.rule.action === 'stop' || message.rule.action === 'mark') {

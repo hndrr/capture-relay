@@ -162,13 +162,16 @@
     guideBox?.remove();
     guideBox = null;
     if (!rect) return;
+    let current: BoxRect = { ...rect };
     const box = document.createElement('div');
+    const applyPos = (): void => {
+      box.style.left = `${current.x - 2}px`;
+      box.style.top = `${current.y - 2}px`;
+      box.style.width = `${current.width + 4}px`;
+      box.style.height = `${current.height + 4}px`;
+    };
     box.style.cssText = [
       'position:fixed',
-      `left:${rect.x - 2}px`,
-      `top:${rect.y - 2}px`,
-      `width:${rect.width + 4}px`,
-      `height:${rect.height + 4}px`,
       'box-sizing:border-box',
       'border:2px dashed #ff6b6b',
       'box-shadow:0 0 0 1px rgba(0,0,0,0.45)',
@@ -176,6 +179,61 @@
       'pointer-events:none',
       'z-index:2147483645',
     ].join(';');
+    applyPos();
+
+    const handle = document.createElement('div');
+    handle.textContent = '⋮⋮ 移動';
+    handle.style.cssText = [
+      'position:absolute',
+      'left:-2px',
+      'top:-22px',
+      'padding:2px 7px',
+      'font:600 11px/16px sans-serif',
+      'color:#fff',
+      'background:#e04f4f',
+      'border-radius:4px 4px 0 0',
+      'cursor:grab',
+      'user-select:none',
+      'pointer-events:auto',
+    ].join(';');
+
+    handle.addEventListener('mousedown', (event: MouseEvent) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const origX = current.x;
+      const origY = current.y;
+      handle.style.cursor = 'grabbing';
+
+      const onMove = (e: MouseEvent): void => {
+        const maxX = Math.max(0, document.documentElement.clientWidth - current.width);
+        const maxY = Math.max(0, document.documentElement.clientHeight - current.height);
+        current = {
+          ...current,
+          x: Math.max(0, Math.min(maxX, origX + (e.clientX - startX))),
+          y: Math.max(0, Math.min(maxY, origY + (e.clientY - startY))),
+        };
+        applyPos();
+      };
+
+      const onUp = (): void => {
+        window.removeEventListener('mousemove', onMove, true);
+        window.removeEventListener('mouseup', onUp, true);
+        handle.style.cursor = 'grab';
+        void chrome.runtime.sendMessage({
+          type: 'RECORD_GUIDE_MOVED',
+          rect: current,
+          viewport: viewSize(),
+        }).catch(() => undefined);
+      };
+
+      window.addEventListener('mousemove', onMove, true);
+      window.addEventListener('mouseup', onUp, true);
+    });
+
+    box.append(handle);
     document.documentElement.append(box);
     guideBox = box;
   }
