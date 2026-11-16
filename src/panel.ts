@@ -58,6 +58,7 @@ let session: StreamSession | null = null;
 let selectedTabId: number | null = null;
 let armedTabId: number | null = null;
 let pendingRecPick: PickResult | null = null;
+let pendingRecTabId: number | null = null;
 let saveSettings: SaveSettings = { saveFolder: 'capture-relay', saveAs: false };
 let events: EventRecord[] = [];
 let busy = false;
@@ -252,6 +253,15 @@ async function chooseDesktopStream(sources: chrome.desktopCapture.DesktopCapture
     video: video as unknown as MediaTrackConstraints,
     audio: audio as unknown as MediaTrackConstraints | boolean,
   });
+}
+
+async function syncRecordGuide(rect: BoxRect | null, targetTabId = pendingRecTabId ?? selectedTabId): Promise<void> {
+  if (targetTabId === null) return;
+  try {
+    await chrome.tabs.sendMessage(targetTabId, { type: 'SET_RECORD_GUIDE', rect });
+  } catch {
+    /* ignore if tab was closed or cannot receive messages */
+  }
 }
 
 async function createCroppedStream(
@@ -549,14 +559,24 @@ function wire(): void {
   }));
   controls.source.addEventListener('change', updateControls);
   const pickRecordArea = async (mode: 'region' | 'element'): Promise<void> => {
+    await syncRecordGuide(null);
+    const targetId = tabId();
     const picked = await injectPicker(mode);
     pendingRecPick = picked;
+    pendingRecTabId = targetId;
+    await syncRecordGuide(picked.rect, targetId);
     if (picked.selector) controls.selector.value = picked.selector;
     status(`録画範囲を設定: ${Math.round(picked.rect.width)}×${Math.round(picked.rect.height)}`);
   };
   controls.pickRecRegion.addEventListener('click', () => void run(() => pickRecordArea('region')));
   controls.pickRecElement.addEventListener('click', () => void run(() => pickRecordArea('element')));
-  controls.clearRecArea.addEventListener('click', () => { pendingRecPick = null; updateControls(); status('録画範囲を「全体」に戻しました。'); });
+  controls.clearRecArea.addEventListener('click', () => {
+    void syncRecordGuide(null);
+    pendingRecPick = null;
+    pendingRecTabId = null;
+    updateControls();
+    status('録画範囲を「全体」に戻しました。');
+  });
   controls.prepare.addEventListener('click', () => void run(() => prepare()));
   controls.grantMic.addEventListener('click', () => void run(async () => {
     await chrome.tabs.create({ url: chrome.runtime.getURL('panel.html?grantMic=1') });
@@ -614,6 +634,7 @@ function wire(): void {
     }
   });
   window.addEventListener('beforeunload', () => {
+    void syncRecordGuide(null);
     session?.stream.getTracks().forEach(track => track.stop());
     for (const url of blobURLs) URL.revokeObjectURL(url);
   });

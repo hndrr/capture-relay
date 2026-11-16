@@ -156,8 +156,37 @@
     });
   }
 
+  let guideBox: HTMLDivElement | null = null;
+
+  function setRecordGuide(rect: BoxRect | null): void {
+    guideBox?.remove();
+    guideBox = null;
+    if (!rect) return;
+    const box = document.createElement('div');
+    box.style.cssText = [
+      'position:fixed',
+      `left:${rect.x - 2}px`,
+      `top:${rect.y - 2}px`,
+      `width:${rect.width + 4}px`,
+      `height:${rect.height + 4}px`,
+      'box-sizing:border-box',
+      'border:2px dashed #ff6b6b',
+      'box-shadow:0 0 0 1px rgba(0,0,0,0.45)',
+      'border-radius:3px',
+      'pointer-events:none',
+      'z-index:2147483645',
+    ].join(';');
+    document.documentElement.append(box);
+    guideBox = box;
+  }
+
   chrome.runtime.onMessage.addListener((message, _sender, respond) => {
-    if (message.type !== 'CONFIGURE_RULE' && message.type !== 'PICK') return;
+    if (message.type !== 'CONFIGURE_RULE' && message.type !== 'PICK' && message.type !== 'SET_RECORD_GUIDE') return;
+    if (message.type === 'SET_RECORD_GUIDE') {
+      setRecordGuide(message.rect);
+      respond({ ok: true, data: null });
+      return;
+    }
     if (message.type === 'CONFIGURE_RULE') {
       try { configure(message.tabId, message.rule); respond({ ok: true, data: null }); }
       catch (e) { respond({ ok: false, error: String(e) }); }

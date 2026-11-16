@@ -25,6 +25,7 @@ type ExtMessage =
   | { type: 'DISARM_TRIGGER'; tabId: number }
   | { type: 'CONFIGURE_RULE'; tabId: number; rule: TriggerRule | null }
   | { type: 'PICK'; mode: 'element' | 'region' }
+  | { type: 'SET_RECORD_GUIDE'; rect: BoxRect | null }
   | { type: 'CAPTURE'; tabId: number; rect?: BoxRect; viewport?: ViewSize; prefix?: string }
   | { type: 'ADD_LOG'; record: EventRecord }
   | TriggerFired;

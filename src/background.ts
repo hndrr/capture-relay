@@ -123,7 +123,7 @@ async function onTrigger(message: TriggerFired, tabId: number): Promise<void> {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
-  if (message.type === 'CONFIGURE_RULE' || message.type === 'PICK') return;
+  if (message.type === 'CONFIGURE_RULE' || message.type === 'PICK' || message.type === 'SET_RECORD_GUIDE') return;
   const work = async (): Promise<ExtResponse> => {
     try {
       switch (message.type) {
