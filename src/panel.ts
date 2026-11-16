@@ -218,8 +218,11 @@ async function prepare(): Promise<void> {
     } catch (error) {
       const detail = humanError(error);
       if (detail.includes('activeTab') || detail.includes('invoked')) {
-        // activeTab 未付与時は Chrome の共有ピッカーへフォールバックしてそのまま録画できるようにする
-        stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        // activeTab 未付与時は Chrome タブ選択に絞った共有ピッカーへフォールバックする
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { displaySurface: 'browser' } as MediaTrackConstraints,
+          audio: true,
+        });
       } else {
         throw error;
       }
