@@ -32,7 +32,7 @@ export function sanitizeSaveFolder(folder?: string): string {
 export function exportFilename(
   prefix: string,
   timestamp: number,
-  extension: 'png' | 'webm' | 'json',
+  extension: 'png' | 'webm' | 'wav' | 'json',
   folder = 'capture-relay',
 ): string {
   const stamp = new Date(timestamp).toISOString().replace(/[:.]/g, '-');

@@ -16,12 +16,16 @@ const controls = {
   notice: $<HTMLDivElement>('notice'),
   recordInfo: $<HTMLDivElement>('record-info'),
   recordBadge: $<HTMLSpanElement>('rec-badge'),
+  micInfo: $<HTMLDivElement>('mic-info'),
+  micBadge: $<HTMLSpanElement>('mic-badge'),
   armedBadge: $<HTMLSpanElement>('armed-badge'),
   events: $<HTMLDivElement>('events'),
   prepare: $<HTMLButtonElement>('prepare'),
   release: $<HTMLButtonElement>('release'),
   start: $<HTMLButtonElement>('record-start'),
   stop: $<HTMLButtonElement>('record-stop'),
+  micStart: $<HTMLButtonElement>('mic-start'),
+  micStop: $<HTMLButtonElement>('mic-stop'),
   arm: $<HTMLButtonElement>('arm-trigger'),
   disarm: $<HTMLButtonElement>('disarm-trigger'),
   saveFolder: $<HTMLInputElement>('save-folder'),
@@ -119,24 +123,46 @@ function renderEvents(): void {
 
 function updateControls(): void {
   const isRecording = session?.recorder?.state === 'recording';
+  const isMicSession = session?.source === 'mic';
+  const isVideoSession = session !== null && !isMicSession;
+  const isVideoRecording = Boolean(isRecording && isVideoSession);
+  const isMicRecording = Boolean(isRecording && isMicSession);
+
   controls.prepare.disabled = busy || session !== null;
-  controls.release.disabled = busy || session === null || isRecording;
-  controls.start.disabled = busy || Boolean(isRecording);
-  controls.stop.disabled = busy || !isRecording;
+  controls.release.disabled = busy || !isVideoSession || isVideoRecording;
+  controls.start.disabled = busy || Boolean(isRecording) || isMicSession;
+  controls.stop.disabled = busy || !isVideoRecording;
   controls.source.disabled = busy || session !== null;
+
+  controls.micStart.disabled = busy || Boolean(isRecording) || isVideoSession;
+  controls.micStop.disabled = busy || !isMicRecording;
+
   controls.arm.disabled = busy || selectedTabId === null;
   controls.disarm.disabled = busy || armedTabId === null;
-  controls.recordBadge.className = `status-badge${isRecording ? ' recording' : session ? ' active' : ''}`;
-  controls.recordBadge.textContent = isRecording ? '● 録画中' : session ? '準備OK' : '待機中';
+
+  controls.recordBadge.className = `status-badge${isVideoRecording ? ' recording' : isVideoSession ? ' active' : ''}`;
+  controls.recordBadge.textContent = isVideoRecording ? '● 録画中' : isVideoSession ? '準備OK' : '待機中';
+
+  controls.micBadge.className = `status-badge${isMicRecording ? ' recording' : ''}`;
+  controls.micBadge.textContent = isMicRecording ? '● 録音中' : '待機中';
+
   controls.armedBadge.className = `status-badge${armedTabId !== null ? ' active' : ''}`;
   controls.armedBadge.textContent = armedTabId !== null ? 'ON' : 'OFF';
-  if (session?.startedAt && isRecording) {
+
+  if (session?.startedAt && isVideoRecording) {
     const seconds = Math.floor((Date.now() - session.startedAt) / 1000);
     controls.recordInfo.textContent = `録画中 ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} · 「■ 停止して保存」を押すと WebM を保存します。`;
-  } else if (session) {
+  } else if (isVideoSession) {
     controls.recordInfo.textContent = '準備OK。手動またはDOMトリガーで録画を開始できます。';
   } else {
     controls.recordInfo.textContent = '録画中はサイドパネルを閉じないでください。';
+  }
+
+  if (session?.startedAt && isMicRecording) {
+    const seconds = Math.floor((Date.now() - session.startedAt) / 1000);
+    controls.micInfo.textContent = `録音中 ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} · 「■ 停止して保存」を押すと WAV を保存します。`;
+  } else {
+    controls.micInfo.textContent = '録音中はサイドパネルを閉じないでください。';
   }
 }
 
@@ -214,9 +240,9 @@ async function chooseDesktopStream(sources: chrome.desktopCapture.DesktopCapture
   });
 }
 
-async function prepare(): Promise<void> {
+async function prepare(sourceOverride?: CaptureSource): Promise<void> {
   if (session) throw new Error('先に現在のソースを解放してください。');
-  const source = controls.source.value as CaptureSource;
+  const source = sourceOverride ?? (controls.source.value as CaptureSource);
   let stream: MediaStream;
   let monitor: AudioContext | undefined;
   if (source === 'tab') {
@@ -230,7 +256,7 @@ async function prepare(): Promise<void> {
       const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
       if (detail.includes('NotAllowedError') || detail.includes('Permission')) {
         await chrome.tabs.create({ url: chrome.runtime.getURL('panel.html?grantMic=1') });
-        throw new Error('開いたタブでマイクを「許可」してください（許可後タブは自動で閉じます）。その後もう一度「● 録画開始」を押してください。');
+        throw new Error('開いたタブでマイクを「許可」してください（許可後タブは自動で閉じます）。その後もう一度「● 録音開始」を押してください。');
       }
       throw new Error(`マイク権限を取得できませんでした (${detail})`);
     }
@@ -260,6 +286,51 @@ function supportedMime(audioOnly: boolean): string {
   return choices.find(value => MediaRecorder.isTypeSupported(value)) ?? '';
 }
 
+function encodeWav(buffer: AudioBuffer): Blob {
+  const channels = buffer.numberOfChannels;
+  const length = buffer.length;
+  const sampleRate = buffer.sampleRate;
+  const dataSize = length * channels * 2;
+  const out = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(out);
+  const writeStr = (offset: number, s: string): void => {
+    for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
+  };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * channels * 2, true);
+  view.setUint16(32, channels * 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, dataSize, true);
+  const channelData = Array.from({ length: channels }, (_, ch) => buffer.getChannelData(ch));
+  let offset = 44;
+  for (let i = 0; i < length; i++) {
+    for (let ch = 0; ch < channels; ch++) {
+      const sample = Math.max(-1, Math.min(1, channelData[ch]?.[i] ?? 0));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += 2;
+    }
+  }
+  return new Blob([out], { type: 'audio/wav' });
+}
+
+async function blobToWav(blob: Blob): Promise<Blob> {
+  const ctx = new AudioContext();
+  try {
+    const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
+    return encodeWav(decoded);
+  } finally {
+    await ctx.close();
+  }
+}
+
 async function saveBlob(blob: Blob, filename: string): Promise<void> {
   const objectURL = URL.createObjectURL(blob);
   blobURLs.add(objectURL);
@@ -268,10 +339,10 @@ async function saveBlob(blob: Blob, filename: string): Promise<void> {
   // Keep URLs alive while Chrome is reading them. Revoke on panel unload instead of immediately.
 }
 
-async function startRecording(trigger?: TriggerFired): Promise<void> {
+async function startRecording(trigger?: TriggerFired, sourceOverride?: CaptureSource): Promise<void> {
   if (!session) {
     if (trigger) throw new Error('DOMトリガーで自動録画するには、先に「事前準備（トリガー用）」を押してください。');
-    await prepare();
+    await prepare(sourceOverride);
   }
   const active = session;
   if (!active) throw new Error('録画ソースの準備に失敗しました。');
@@ -292,15 +363,16 @@ async function startRecording(trigger?: TriggerFired): Promise<void> {
       const timestamp = active.startedAt ?? Date.now();
       const blob = new Blob(active.chunks, { type: recorder.mimeType || (audioOnly ? 'audio/webm' : 'video/webm') });
       if (blob.size > 0) {
-        const file = exportFilename(audioOnly ? 'audio' : 'video', timestamp, 'webm', saveSettings.saveFolder);
-        await saveBlob(blob, file);
-        await addLog('saved', `${file} (${Math.round(blob.size / 1024)} KiB)`);
+        const outBlob = audioOnly ? await blobToWav(blob) : blob;
+        const file = exportFilename(audioOnly ? 'audio' : 'video', timestamp, audioOnly ? 'wav' : 'webm', saveSettings.saveFolder);
+        await saveBlob(outBlob, file);
+        await addLog('saved', `${file} (${Math.round(outBlob.size / 1024)} KiB)`);
         status(`保存: ${file}`);
       } else {
         await addLog('error', '録画データが空でした');
         status('録画データが空です。', true);
       }
-      if (session === active && !active.stream.active) cleanSession();
+      if (session === active && (audioOnly || !active.stream.active)) cleanSession();
     })().catch(error => status(humanError(error), true)).finally(updateControls);
   };
   recorder.start(250);
@@ -361,14 +433,16 @@ function wire(): void {
     controls.selector.value = picked.selector ?? '';
     status(`選択: ${picked.selector ?? ''}`);
   }));
-  controls.prepare.addEventListener('click', () => void run(prepare));
+  controls.prepare.addEventListener('click', () => void run(() => prepare()));
   controls.grantMic.addEventListener('click', () => void run(async () => {
     await chrome.tabs.create({ url: chrome.runtime.getURL('panel.html?grantMic=1') });
-    status('開いたタブでマイクを許可したあと、再度「① ソースを準備」を押してください。');
+    status('開いたタブでマイクを許可したあと、再度「● 録音開始」を押してください。');
   }));
   controls.release.addEventListener('click', () => { cleanSession(); status('ソースを解放しました。'); });
   controls.start.addEventListener('click', () => void run(() => startRecording()));
   controls.stop.addEventListener('click', () => void run(() => stopRecording()));
+  controls.micStart.addEventListener('click', () => void run(() => startRecording(undefined, 'mic')));
+  controls.micStop.addEventListener('click', () => void run(() => stopRecording()));
   controls.arm.addEventListener('click', () => void run(armTrigger));
   controls.disarm.addEventListener('click', () => void run(disarmTrigger));
   $('export-log').addEventListener('click', () => void run(async () => {

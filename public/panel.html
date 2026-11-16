@@ -34,16 +34,22 @@
           <div class="button-grid"><button id="shot-view" type="button">表示中の画面</button><button id="shot-region" type="button">範囲をドラッグ</button><button id="shot-element" type="button">要素をクリック</button></div>
         </section>
         <section class="card">
-          <div class="section-title"><span class="step">04</span><h2>録画・録音</h2><span id="rec-badge" class="status-badge">待機中</span></div>
-          <label for="capture-source">録画・録音の対象</label>
-          <select id="capture-source"><option value="tab">Chrome タブ（映像＋音声）</option><option value="display">画面・ウィンドウ（映像＋音声）</option><option value="mic">マイク音声のみ</option></select>
-          <p class="muted small">「● 録画開始」を押すとそのまま録画が始まります。DOMトリガーで自動録画したい場合のみ、先に「事前準備」を押してください。</p>
+          <div class="section-title"><span class="step">04</span><h2>画面録画（映像＋音声）</h2><span id="rec-badge" class="status-badge">待機中</span></div>
+          <label for="capture-source">録画の対象</label>
+          <select id="capture-source"><option value="tab">Chrome タブ（映像＋音声）</option><option value="display">画面・ウィンドウ（映像＋音声）</option></select>
+          <p class="muted small">「● 録画開始」を押すと対象選択ダイアログが開き、そのまま録画が始まります。DOMトリガーで自動録画したい場合のみ、先に「事前準備」を押してください。</p>
           <div class="button-grid two"><button id="record-start" class="primary" type="button">● 録画開始</button><button id="record-stop" type="button" disabled>■ 停止して保存</button><button id="prepare" class="secondary" type="button">事前準備（トリガー用）</button><button id="release" class="secondary" type="button" disabled>準備を解除</button></div>
-          <button id="grant-mic" class="secondary" type="button" style="width:100%;margin-top:8px" hidden>マイク権限を許可するタブを開く</button>
           <div id="record-info" class="muted small">録画中はサイドパネルを閉じないでください。</div>
         </section>
         <section class="card">
-          <div class="section-title"><span class="step">05</span><h2>DOMトリガー（自動実行）</h2><span id="armed-badge" class="status-badge">OFF</span></div>
+          <div class="section-title"><span class="step">05</span><h2>マイク録音（音声のみ）</h2><span id="mic-badge" class="status-badge">待機中</span></div>
+          <p class="muted small">マイクからの音声を WAV で録音します。初回のみ権限許可のタブが自動で開きます。</p>
+          <div class="button-grid two"><button id="mic-start" class="primary" type="button">● 録音開始</button><button id="mic-stop" type="button" disabled>■ 停止して保存</button></div>
+          <button id="grant-mic" class="secondary" type="button" style="width:100%;margin-top:8px" hidden>マイク権限を許可するタブを開く</button>
+          <div id="mic-info" class="muted small">録音中はサイドパネルを閉じないでください。</div>
+        </section>
+        <section class="card">
+          <div class="section-title"><span class="step">06</span><h2>DOMトリガー（自動実行）</h2><span id="armed-badge" class="status-badge">OFF</span></div>
           <label for="selector">監視する要素（CSSセレクタ）</label>
           <div class="input-row"><input id="selector" placeholder=".modal[data-state='open']" spellcheck="false" /><button id="pick-selector" type="button" class="secondary mini">画面から選ぶ</button></div>
           <div class="two-col"><div><label for="trigger-when">タイミング</label><select id="trigger-when"><option value="appear">要素が表示されたら</option><option value="disappear">要素が消えたら</option><option value="click">クリックされたら</option></select></div><div><label for="trigger-action">実行する操作</label><select id="trigger-action"><option value="screenshot">画像を保存（PNG）</option><option value="start">録画を開始</option><option value="stop">録画を停止</option><option value="mark">ログに時刻を記録</option></select></div></div>
@@ -52,7 +58,7 @@
           <p class="muted small">※ 録画の自動開始・停止には、事前の「事前準備」とサイドパネルを開いたままにすることが必要です。</p>
         </section>
         <section class="card">
-          <div class="section-title"><span class="step">06</span><h2>イベントログ</h2><button id="export-log" class="text-button" type="button">ログを保存 (JSON)</button></div>
+          <div class="section-title"><span class="step">07</span><h2>イベントログ</h2><button id="export-log" class="text-button" type="button">ログを保存 (JSON)</button></div>
           <div id="events" class="event-list" aria-live="polite"><p class="muted small">イベントはありません。</p></div>
         </section>
       </main>
