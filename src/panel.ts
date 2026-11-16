@@ -34,7 +34,7 @@ const EVENTS_KEY = 'captureRelayEvents';
 const ARMED_KEY = 'captureRelayArmed';
 const SETTINGS_KEY = 'captureRelaySettings';
 
-type CaptureSource = 'tab' | 'display' | 'mic';
+type CaptureSource = 'display' | 'mic';
 type StreamSession = {
   source: CaptureSource;
   stream: MediaStream;
@@ -199,16 +199,9 @@ async function prepare(): Promise<void> {
   const source = controls.source.value as CaptureSource;
   let stream: MediaStream;
   let monitor: AudioContext | undefined;
-  if (source === 'tab') {
+  if (source === 'display') {
     stream = await navigator.mediaDevices.getDisplayMedia({
       video: { displaySurface: 'browser' } as MediaTrackConstraints,
-      audio: { suppressLocalAudioPlayback: false } as MediaTrackConstraints,
-      selfBrowserSurface: 'include',
-      systemAudio: 'include',
-    } as DisplayMediaStreamOptions);
-  } else if (source === 'display') {
-    stream = await navigator.mediaDevices.getDisplayMedia({
-      video: true,
       audio: { suppressLocalAudioPlayback: false } as MediaTrackConstraints,
       selfBrowserSurface: 'include',
       systemAudio: 'include',
@@ -226,7 +219,7 @@ async function prepare(): Promise<void> {
     }
   }
   controls.grantMic.hidden = true;
-  const nextSession: StreamSession = { source, stream, chunks: [], ...(source === 'tab' ? { tabId: tabId() } : {}) };
+  const nextSession: StreamSession = { source, stream, chunks: [] };
   if (monitor) nextSession.monitor = monitor;
   session = nextSession;
   for (const track of stream.getTracks()) {
