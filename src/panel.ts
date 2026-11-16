@@ -200,35 +200,19 @@ async function prepare(): Promise<void> {
   let stream: MediaStream;
   let monitor: AudioContext | undefined;
   if (source === 'tab') {
-    // Call immediately in the button gesture: tabCapture checks user activation.
-    // The target tab must already be active (the tab selector activates it).
-    try {
-      const id = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId() });
-      // `chromeMediaSourceId` is Chrome-specific and not part of standard TS DOM types.
-      const audio = { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: id } };
-      const video = { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: id } };
-      stream = await navigator.mediaDevices.getUserMedia({ audio: audio as unknown as MediaTrackConstraints, video: video as unknown as MediaTrackConstraints });
-      // Tab capture otherwise mutes the tab for the local user.
-      if (stream.getAudioTracks().length) {
-        monitor = new AudioContext();
-        const input = monitor.createMediaStreamSource(stream);
-        input.connect(monitor.destination);
-        await monitor.resume();
-      }
-    } catch (error) {
-      const detail = humanError(error);
-      if (detail.includes('activeTab') || detail.includes('invoked')) {
-        // activeTab 未付与時は Chrome タブ選択に絞った共有ピッカーへフォールバックする
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          video: { displaySurface: 'browser' } as MediaTrackConstraints,
-          audio: true,
-        });
-      } else {
-        throw error;
-      }
-    }
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { displaySurface: 'browser' } as MediaTrackConstraints,
+      audio: { suppressLocalAudioPlayback: false } as MediaTrackConstraints,
+      selfBrowserSurface: 'include',
+      systemAudio: 'include',
+    } as DisplayMediaStreamOptions);
   } else if (source === 'display') {
-    stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: { suppressLocalAudioPlayback: false } as MediaTrackConstraints,
+      selfBrowserSurface: 'include',
+      systemAudio: 'include',
+    } as DisplayMediaStreamOptions);
   } else {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
