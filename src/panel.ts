@@ -38,7 +38,7 @@ const EVENTS_KEY = 'captureRelayEvents';
 const ARMED_KEY = 'captureRelayArmed';
 const SETTINGS_KEY = 'captureRelaySettings';
 
-type CaptureSource = 'tab' | 'display' | 'mic';
+type CaptureSource = 'current-tab' | 'tab' | 'display' | 'mic';
 type StreamSession = {
   source: CaptureSource;
   stream: MediaStream;
@@ -245,7 +245,28 @@ async function prepare(sourceOverride?: CaptureSource): Promise<void> {
   const source = sourceOverride ?? (controls.source.value as CaptureSource);
   let stream: MediaStream;
   let monitor: AudioContext | undefined;
-  if (source === 'tab') {
+  if (source === 'current-tab') {
+    await activateTarget();
+    let id: string;
+    try {
+      id = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId() });
+    } catch (error) {
+      const detail = humanError(error);
+      if (detail.includes('activeTab') || detail.includes('invoked')) {
+        throw new Error('このタブではまだ「即録画」の権限が有効になっていません。録画したいタブを表示した状態で右上の Capture Relay アイコンを一度クリックするか、「Chrome タブを選択」を使用してください。');
+      }
+      throw error;
+    }
+    const audio = { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: id } };
+    const video = { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: id } };
+    stream = await navigator.mediaDevices.getUserMedia({ audio: audio as unknown as MediaTrackConstraints, video: video as unknown as MediaTrackConstraints });
+    if (stream.getAudioTracks().length) {
+      monitor = new AudioContext();
+      const input = monitor.createMediaStreamSource(stream);
+      input.connect(monitor.destination);
+      await monitor.resume();
+    }
+  } else if (source === 'tab') {
     stream = await chooseDesktopStream(['tab', 'audio']);
   } else if (source === 'display') {
     stream = await chooseDesktopStream(['screen', 'window', 'audio']);
@@ -262,7 +283,7 @@ async function prepare(sourceOverride?: CaptureSource): Promise<void> {
     }
   }
   controls.grantMic.hidden = true;
-  const nextSession: StreamSession = { source, stream, chunks: [] };
+  const nextSession: StreamSession = { source, stream, chunks: [], ...(source === 'current-tab' ? { tabId: tabId() } : {}) };
   if (monitor) nextSession.monitor = monitor;
   session = nextSession;
   for (const track of stream.getTracks()) {
