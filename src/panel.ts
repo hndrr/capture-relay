@@ -140,8 +140,8 @@ function updateControls(): void {
   controls.start.textContent = session !== null || area === 'full'
     ? '● 録画開始'
     : area === 'region'
-      ? '範囲を選んで録画開始'
-      : '要素を選んで録画開始';
+      ? '範囲選択'
+      : '要素選択';
 
   controls.micStart.disabled = busy || Boolean(isRecording) || isVideoSession;
   controls.micStop.disabled = busy || !isMicRecording;
