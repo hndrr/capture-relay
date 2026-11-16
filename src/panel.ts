@@ -202,26 +202,27 @@ async function prepare(): Promise<void> {
   if (source === 'tab') {
     // Call immediately in the button gesture: tabCapture checks user activation.
     // The target tab must already be active (the tab selector activates it).
-    let id: string;
     try {
-      id = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId() });
+      const id = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId() });
+      // `chromeMediaSourceId` is Chrome-specific and not part of standard TS DOM types.
+      const audio = { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: id } };
+      const video = { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: id } };
+      stream = await navigator.mediaDevices.getUserMedia({ audio: audio as unknown as MediaTrackConstraints, video: video as unknown as MediaTrackConstraints });
+      // Tab capture otherwise mutes the tab for the local user.
+      if (stream.getAudioTracks().length) {
+        monitor = new AudioContext();
+        const input = monitor.createMediaStreamSource(stream);
+        input.connect(monitor.destination);
+        await monitor.resume();
+      }
     } catch (error) {
       const detail = humanError(error);
       if (detail.includes('activeTab') || detail.includes('invoked')) {
-        throw new Error('このタブの録画権限がまだ有効になっていません。録画したいタブを開いた状態でブラウザ右上の Capture Relay アイコンを一度クリックするか、対象を「画面・ウィンドウを選択」に切り替えてください。');
+        // activeTab 未付与時は Chrome の共有ピッカーへフォールバックしてそのまま録画できるようにする
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      } else {
+        throw error;
       }
-      throw error;
-    }
-    // `chromeMediaSourceId` is Chrome-specific and not part of standard TS DOM types.
-    const audio = { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: id } };
-    const video = { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: id } };
-    stream = await navigator.mediaDevices.getUserMedia({ audio: audio as unknown as MediaTrackConstraints, video: video as unknown as MediaTrackConstraints });
-    // Tab capture otherwise mutes the tab for the local user.
-    if (stream.getAudioTracks().length) {
-      monitor = new AudioContext();
-      const input = monitor.createMediaStreamSource(stream);
-      input.connect(monitor.destination);
-      await monitor.resume();
     }
   } else if (source === 'display') {
     stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
