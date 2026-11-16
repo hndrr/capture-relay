@@ -2,8 +2,18 @@ import { clampCaptureRect, exportFilename } from './rect.js';
 
 const LOG_KEY = 'captureRelayEvents';
 const ARMED_KEY = 'captureRelayArmed';
+const SETTINGS_KEY = 'captureRelaySettings';
 let savingLogs: Promise<void> = Promise.resolve();
 const lastAutoCapture = new Map<number, number>();
+
+async function readSaveSettings(): Promise<SaveSettings> {
+  const data = await chrome.storage.local.get(SETTINGS_KEY);
+  const raw = data[SETTINGS_KEY] as Partial<SaveSettings> | undefined;
+  return {
+    saveFolder: typeof raw?.saveFolder === 'string' && raw.saveFolder.trim() ? raw.saveFolder : 'capture-relay',
+    saveAs: Boolean(raw?.saveAs),
+  };
+}
 
 chrome.runtime.onInstalled.addListener(() => {
   void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
@@ -56,8 +66,9 @@ async function capture(message: Extract<ExtMessage, { type: 'CAPTURE' }>): Promi
       bitmap.close();
     }
   }
-  const filename = exportFilename(message.prefix ?? 'screenshot', Date.now(), 'png');
-  await chrome.downloads.download({ url: finalData, filename, saveAs: false });
+  const settings = await readSaveSettings();
+  const filename = exportFilename(message.prefix ?? 'screenshot', Date.now(), 'png', settings.saveFolder);
+  await chrome.downloads.download({ url: finalData, filename, saveAs: settings.saveAs });
   await log('screenshot', filename, message.tabId);
   return filename;
 }

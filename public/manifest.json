@@ -8,5 +8,5 @@
   "background": { "service_worker": "background.js", "type": "module" },
   "side_panel": { "default_path": "panel.html" },
   "permissions": ["sidePanel", "tabs", "activeTab", "scripting", "downloads", "storage", "tabCapture"],
-  "host_permissions": ["http://*/*", "https://*/*"]
+  "host_permissions": ["<all_urls>"]
 }

@@ -5,6 +5,7 @@ type TriggerWhen = 'appear' | 'disappear' | 'click';
 type TriggerAction = 'screenshot' | 'start' | 'stop' | 'mark';
 type TriggerRule = { selector: string; when: TriggerWhen; action: TriggerAction; crop: boolean };
 type ArmedRule = { tabId: number; rule: TriggerRule };
+type SaveSettings = { saveFolder: string; saveAs: boolean };
 type EventRecord = {
   id: string;
   timestamp: number;
@@ -37,6 +38,7 @@ declare namespace chrome {
       addListener(callback: (message: ExtMessage, sender: MessageSender, sendResponse: (response: ExtResponse) => void) => boolean | void): void;
     };
     function sendMessage<T = unknown>(message: ExtMessage): Promise<ExtResponse<T>>;
+    function getURL(path: string): string;
   }
   namespace sidePanel {
     function setPanelBehavior(options: { openPanelOnActionClick: boolean }): Promise<void>;
@@ -48,6 +50,7 @@ declare namespace chrome {
     function query(options: { currentWindow?: boolean; active?: boolean; windowId?: number }): Promise<Tab[]>;
     function get(tabId: number): Promise<Tab>;
     function update(tabId: number, options: { active: boolean }): Promise<Tab>;
+    function create(options: { url: string }): Promise<Tab>;
     function captureVisibleTab(windowId?: number, options?: { format?: 'png' | 'jpeg' }): Promise<string>;
     function sendMessage<T = unknown>(tabId: number, message: ExtMessage): Promise<ExtResponse<T>>;
   }

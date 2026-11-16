@@ -20,8 +20,22 @@ export function clampCaptureRect(
   return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
 }
 
-export function exportFilename(prefix: string, timestamp: number, extension: 'png' | 'webm' | 'json'): string {
+export function sanitizeSaveFolder(folder?: string): string {
+  const segments = (folder ?? '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .map(part => part.trim().replace(/[<>:"|?*\x00-\x1f]/g, '-'))
+    .filter(part => part && part !== '.' && part !== '..');
+  return segments.length ? segments.join('/') : 'capture-relay';
+}
+
+export function exportFilename(
+  prefix: string,
+  timestamp: number,
+  extension: 'png' | 'webm' | 'json',
+  folder = 'capture-relay',
+): string {
   const stamp = new Date(timestamp).toISOString().replace(/[:.]/g, '-');
   const safe = prefix.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 36) || 'capture';
-  return `capture-relay/${stamp}_${safe}.${extension}`;
+  return `${sanitizeSaveFolder(folder)}/${stamp}_${safe}.${extension}`;
 }

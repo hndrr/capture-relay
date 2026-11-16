@@ -1,4 +1,4 @@
-import { exportFilename } from './rect.js';
+import { exportFilename, sanitizeSaveFolder } from './rect.js';
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const found = document.getElementById(id);
@@ -24,10 +24,15 @@ const controls = {
   stop: $<HTMLButtonElement>('record-stop'),
   arm: $<HTMLButtonElement>('arm-trigger'),
   disarm: $<HTMLButtonElement>('disarm-trigger'),
+  saveFolder: $<HTMLInputElement>('save-folder'),
+  saveAs: $<HTMLInputElement>('save-as'),
+  errorBanner: $<HTMLDivElement>('error-banner'),
+  grantMic: $<HTMLButtonElement>('grant-mic'),
 };
 
 const EVENTS_KEY = 'captureRelayEvents';
 const ARMED_KEY = 'captureRelayArmed';
+const SETTINGS_KEY = 'captureRelaySettings';
 
 type CaptureSource = 'tab' | 'display' | 'mic';
 type StreamSession = {
@@ -43,13 +48,17 @@ type StreamSession = {
 let session: StreamSession | null = null;
 let selectedTabId: number | null = null;
 let armedTabId: number | null = null;
+let saveSettings: SaveSettings = { saveFolder: 'capture-relay', saveAs: false };
 let events: EventRecord[] = [];
 let busy = false;
 const blobURLs = new Set<string>();
 
 function status(message: string, error = false): void {
   controls.notice.textContent = message;
+  controls.notice.title = message;
   controls.notice.style.color = error ? '#ffb6ae' : '#a8a9b7';
+  controls.errorBanner.hidden = !error;
+  controls.errorBanner.textContent = error ? message : '';
 }
 
 function tabId(): number {
@@ -66,7 +75,11 @@ async function run(task: () => Promise<void>): Promise<void> {
   busy = true;
   updateControls();
   try { await task(); }
-  catch (error) { status(humanError(error), true); }
+  catch (error) {
+    const msg = humanError(error);
+    status(msg, true);
+    void addLog('error', msg).catch(() => undefined);
+  }
   finally { busy = false; updateControls(); }
 }
 
@@ -92,7 +105,8 @@ function renderEvents(): void {
   controls.events.replaceChildren();
   if (!events.length) { const empty = document.createElement('p'); empty.className = 'muted small'; empty.textContent = 'イベントはありません。'; controls.events.append(empty); return; }
   for (const record of events.slice(-50).reverse()) {
-    const wrapper = document.createElement('div'); wrapper.className = 'event';
+    const wrapper = document.createElement('div');
+    wrapper.className = record.kind === 'error' ? 'event is-error' : 'event';
     const detail = document.createElement('div'); detail.className = 'detail';
     const title = document.createElement('strong'); title.textContent = `${record.kind} · ${record.detail}`;
     const extra = document.createElement('small');
@@ -203,8 +217,15 @@ async function prepare(): Promise<void> {
   } else if (source === 'display') {
     stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
   } else {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    } catch (error) {
+      controls.grantMic.hidden = false;
+      const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      throw new Error(`マイク権限を取得できませんでした (${detail})。下の「マイク権限を許可するタブを開く」から許可してください。`);
+    }
   }
+  controls.grantMic.hidden = true;
   const nextSession: StreamSession = { source, stream, chunks: [], ...(source === 'tab' ? { tabId: tabId() } : {}) };
   if (monitor) nextSession.monitor = monitor;
   session = nextSession;
@@ -232,7 +253,7 @@ function supportedMime(audioOnly: boolean): string {
 async function saveBlob(blob: Blob, filename: string): Promise<void> {
   const objectURL = URL.createObjectURL(blob);
   blobURLs.add(objectURL);
-  try { await chrome.downloads.download({ url: objectURL, filename, saveAs: false }); }
+  try { await chrome.downloads.download({ url: objectURL, filename, saveAs: saveSettings.saveAs }); }
   catch (e) { URL.revokeObjectURL(objectURL); blobURLs.delete(objectURL); throw e; }
   // Keep URLs alive while Chrome is reading them. Revoke on panel unload instead of immediately.
 }
@@ -257,7 +278,7 @@ async function startRecording(trigger?: TriggerFired): Promise<void> {
       const timestamp = active.startedAt ?? Date.now();
       const blob = new Blob(active.chunks, { type: recorder.mimeType || (audioOnly ? 'audio/webm' : 'video/webm') });
       if (blob.size > 0) {
-        const file = exportFilename(audioOnly ? 'audio' : 'video', timestamp, 'webm');
+        const file = exportFilename(audioOnly ? 'audio' : 'video', timestamp, 'webm', saveSettings.saveFolder);
         await saveBlob(blob, file);
         await addLog('saved', `${file} (${Math.round(blob.size / 1024)} KiB)`);
         status(`保存: ${file}`);
@@ -327,16 +348,31 @@ function wire(): void {
     status(`選択: ${picked.selector ?? ''}`);
   }));
   controls.prepare.addEventListener('click', () => void run(prepare));
+  controls.grantMic.addEventListener('click', () => void run(async () => {
+    await chrome.tabs.create({ url: chrome.runtime.getURL('panel.html?grantMic=1') });
+    status('開いたタブでマイクを許可したあと、再度「① ソースを準備」を押してください。');
+  }));
   controls.release.addEventListener('click', () => { cleanSession(); status('ソースを解放しました。'); });
   controls.start.addEventListener('click', () => void run(() => startRecording()));
   controls.stop.addEventListener('click', () => void run(() => stopRecording()));
   controls.arm.addEventListener('click', () => void run(armTrigger));
   controls.disarm.addEventListener('click', () => void run(disarmTrigger));
   $('export-log').addEventListener('click', () => void run(async () => {
-    const file = exportFilename('events', Date.now(), 'json');
+    const file = exportFilename('events', Date.now(), 'json', saveSettings.saveFolder);
     await saveBlob(new Blob([JSON.stringify(events, null, 2)], { type: 'application/json' }), file);
     status(`保存: ${file}`);
   }));
+  const persistSettings = async (): Promise<void> => {
+    saveSettings = {
+      saveFolder: sanitizeSaveFolder(controls.saveFolder.value),
+      saveAs: controls.saveAs.checked,
+    };
+    controls.saveFolder.value = saveSettings.saveFolder;
+    await chrome.storage.local.set({ [SETTINGS_KEY]: saveSettings });
+    status(saveSettings.saveAs ? '保存時に毎回ダイアログを開きます。' : `保存先: ダウンロード/${saveSettings.saveFolder}`);
+  };
+  controls.saveFolder.addEventListener('change', () => void run(persistSettings));
+  controls.saveAs.addEventListener('change', () => void run(persistSettings));
   chrome.runtime.onMessage.addListener((message, _sender, _respond) => {
     if (message.type !== 'TRIGGER_FIRED') return;
     // The background service worker logs the event and handles screenshot actions.
@@ -373,10 +409,50 @@ function wire(): void {
 }
 
 async function init(): Promise<void> {
+  if (new URLSearchParams(location.search).get('grantMic') === '1') {
+    const main = document.querySelector('main');
+    if (main) {
+      main.replaceChildren();
+      const card = document.createElement('section');
+      card.className = 'card';
+      const title = document.createElement('h2');
+      title.textContent = 'マイク権限の許可';
+      const desc = document.createElement('p');
+      desc.className = 'muted';
+      desc.textContent = 'Side Panel 内では Chrome の仕様上マイク許可ダイアログを出せないため、このタブから一度だけマイクを許可してください。';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'primary';
+      btn.textContent = 'マイクを許可する';
+      btn.addEventListener('click', () => {
+        void (async () => {
+          try {
+            const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            s.getTracks().forEach(t => t.stop());
+            status('マイクを許可しました。このタブを閉じてサイドパネルに戻ってください。');
+            btn.disabled = true;
+            btn.textContent = '許可済み';
+          } catch (e) {
+            status(humanError(e), true);
+          }
+        })();
+      });
+      card.append(title, desc, btn);
+      main.append(controls.errorBanner, card);
+    }
+    return;
+  }
   wire();
-  const data = await chrome.storage.local.get([EVENTS_KEY, ARMED_KEY]);
+  const data = await chrome.storage.local.get([EVENTS_KEY, ARMED_KEY, SETTINGS_KEY]);
   events = Array.isArray(data[EVENTS_KEY]) ? data[EVENTS_KEY] as EventRecord[] : [];
   const armed = data[ARMED_KEY] as ArmedRule | undefined;
+  const rawSettings = data[SETTINGS_KEY] as Partial<SaveSettings> | undefined;
+  saveSettings = {
+    saveFolder: sanitizeSaveFolder(typeof rawSettings?.saveFolder === 'string' ? rawSettings.saveFolder : undefined),
+    saveAs: Boolean(rawSettings?.saveAs),
+  };
+  controls.saveFolder.value = saveSettings.saveFolder;
+  controls.saveAs.checked = saveSettings.saveAs;
   armedTabId = armed?.tabId ?? null;
   if (armed) {
     controls.selector.value = armed.rule.selector;

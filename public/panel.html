@@ -15,11 +15,18 @@
         <span class="dot" title="ローカルで処理します"></span>
       </header>
       <main>
+        <div id="error-banner" class="error-banner" role="alert" hidden></div>
         <section class="card">
           <div class="section-title"><span class="step">01</span><h2>対象タブ</h2><button id="refresh-tabs" class="text-button" type="button">更新</button></div>
           <label for="target-tab">キャプチャ対象</label>
           <select id="target-tab" aria-label="対象タブ"></select>
           <div id="tab-info" class="muted small"></div>
+        </section>
+        <section class="card">
+          <div class="section-title"><span class="step">02</span><h2>保存先</h2></div>
+          <label for="save-folder">ダウンロードフォルダ内のサブフォルダ</label>
+          <input id="save-folder" placeholder="capture-relay" spellcheck="false" />
+          <label class="check-row" style="margin-top:10px;margin-bottom:0"><input id="save-as" type="checkbox" /> 毎回ダイアログで保存先を指定する (Save As)</label>
         </section>
         <section class="card">
           <div class="section-title"><span class="step">02</span><h2>静止画</h2></div>
@@ -32,6 +39,7 @@
           <select id="capture-source"><option value="tab">現在のタブ（映像＋タブ音声）</option><option value="display">画面・ウィンドウ・別タブ（共有画面選択）</option><option value="mic">マイクのみ（音声）</option></select>
           <p class="muted small">トリガーから録画を始めるには、先にソースを準備してください。画面共有にはChromeの許可が必要です。</p>
           <div class="button-grid two"><button id="prepare" class="secondary" type="button">① ソースを準備</button><button id="release" class="secondary" type="button" disabled>解放</button><button id="record-start" class="primary" type="button" disabled>● 録画開始</button><button id="record-stop" type="button" disabled>■ 停止・保存</button></div>
+          <button id="grant-mic" class="secondary" type="button" style="width:100%;margin-top:8px" hidden>マイク権限を許可するタブを開く</button>
           <div id="record-info" class="muted small">録画中はサイドパネルを閉じないでください。</div>
         </section>
         <section class="card">
