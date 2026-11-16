@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Capture Relay</title>
+    <link rel="stylesheet" href="panel.css" />
+    <script src="panel.js" type="module"></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="masthead">
+        <div><div class="eyebrow">CAPTURE / AUTOMATION</div><h1>Capture Relay <span class="version">0.1</span></h1></div>
+        <span class="dot" title="ローカルで処理します"></span>
+      </header>
+      <main>
+        <section class="card">
+          <div class="section-title"><span class="step">01</span><h2>対象タブ</h2><button id="refresh-tabs" class="text-button" type="button">更新</button></div>
+          <label for="target-tab">キャプチャ対象</label>
+          <select id="target-tab" aria-label="対象タブ"></select>
+          <div id="tab-info" class="muted small"></div>
+        </section>
+        <section class="card">
+          <div class="section-title"><span class="step">02</span><h2>静止画</h2></div>
+          <p class="muted">表示中のタブをPNGで保存します。</p>
+          <div class="button-grid"><button id="shot-view" type="button">ビューポート</button><button id="shot-region" type="button">範囲を選択</button><button id="shot-element" type="button">DOM要素を選択</button></div>
+        </section>
+        <section class="card">
+          <div class="section-title"><span class="step">03</span><h2>録画・録音</h2><span id="rec-badge" class="status-badge">未準備</span></div>
+          <label for="capture-source">収録ソース</label>
+          <select id="capture-source"><option value="tab">現在のタブ（映像＋タブ音声）</option><option value="display">画面・ウィンドウ・別タブ（共有画面選択）</option><option value="mic">マイクのみ（音声）</option></select>
+          <p class="muted small">トリガーから録画を始めるには、先にソースを準備してください。画面共有にはChromeの許可が必要です。</p>
+          <div class="button-grid two"><button id="prepare" class="secondary" type="button">① ソースを準備</button><button id="release" class="secondary" type="button" disabled>解放</button><button id="record-start" class="primary" type="button" disabled>● 録画開始</button><button id="record-stop" type="button" disabled>■ 停止・保存</button></div>
+          <div id="record-info" class="muted small">録画中はサイドパネルを閉じないでください。</div>
+        </section>
+        <section class="card">
+          <div class="section-title"><span class="step">04</span><h2>DOMトリガー</h2><span id="armed-badge" class="status-badge">OFF</span></div>
+          <label for="selector">CSSセレクタ</label>
+          <div class="input-row"><input id="selector" placeholder=".modal[data-state='open']" spellcheck="false" /><button id="pick-selector" type="button" class="secondary mini">選択</button></div>
+          <div class="two-col"><div><label for="trigger-when">条件</label><select id="trigger-when"><option value="appear">要素が現れる</option><option value="disappear">要素が消える</option><option value="click">要素をクリック</option></select></div><div><label for="trigger-action">アクション</label><select id="trigger-action"><option value="screenshot">PNGを保存</option><option value="start">録画開始</option><option value="stop">録画停止</option><option value="mark">時刻を記録</option></select></div></div>
+          <label class="check-row"><input id="crop-trigger" type="checkbox" checked /> PNGをセレクタの領域に切り抜く</label>
+          <div class="button-grid two"><button id="arm-trigger" class="primary" type="button">監視開始</button><button id="disarm-trigger" type="button" disabled>監視停止</button></div>
+          <p class="muted small">DOM変化・クリックを検知。録画開始/停止の自動実行は、準備済みのストリームと開いたサイドパネルが必要です。</p>
+        </section>
+        <section class="card">
+          <div class="section-title"><span class="step">05</span><h2>イベントログ</h2><button id="export-log" class="text-button" type="button">JSON出力</button></div>
+          <div id="events" class="event-list" aria-live="polite"><p class="muted small">イベントはありません。</p></div>
+        </section>
+      </main>
+      <footer><div id="notice" role="status" aria-live="polite">準備完了</div><span>LOCAL FIRST · MV3</span></footer>
+    </div>
+  </body>
+</html>

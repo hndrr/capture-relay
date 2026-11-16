@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Capture Relay (prototype)",
+  "version": "0.1.0",
+  "description": "Visible-tab screenshots, screen/tab/mic recording and DOM-triggered capture.",
+  "minimum_chrome_version": "116",
+  "action": { "default_title": "Capture Relay を開く" },
+  "background": { "service_worker": "background.js", "type": "module" },
+  "side_panel": { "default_path": "panel.html" },
+  "permissions": ["sidePanel", "tabs", "activeTab", "scripting", "downloads", "storage", "tabCapture"],
+  "host_permissions": ["http://*/*", "https://*/*"]
+}

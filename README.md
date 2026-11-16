@@ -1,0 +1,111 @@
+# Capture Relay
+
+Chrome Manifest V3 の **キャプチャ × DOMトリガー** の実験用拡張。TypeScript / Chrome Side Panel。ローカルで処理し、取得したメディアはChromeのダウンロードに保存します。外部サーバーへの送信はありません。
+
+> **Status:** v0.1 prototype。型チェック、矩形クロップ単体テスト、モックAPIによるパネルUIのスモークテスト実施済み。Chromeの実際の権限ダイアログ・録画・イベント取得を含むE2E検証は未実施です。
+
+## 対応機能
+
+| 対象 | できること |
+| --- | --- |
+| 表示中のタブ | PNG撮影。選択した別タブへ切り替えて撮影可能 |
+| タブの範囲 | 矩形ドラッグで選択してPNG切り抜き |
+| DOM要素 | ページ上をクリックして対象要素だけPNG撮影。CSSセレクタ自動入力 |
+| タブ動画＋タブ音声 | `chrome.tabCapture.getMediaStreamId()` + `getUserMedia()` + `MediaRecorder` |
+| 画面・ウィンドウ・別タブの動画 | `getDisplayMedia()` からChromeの共有対象選択を使用（音声はOSと共有対象による） |
+| マイク | `getUserMedia({audio:true})` によるWebM/Opus録音 |
+| DOM監視 | CSSセレクタへの要素出現、消失、クリックを監視 |
+| トリガーアクション | PNG保存、準備済み録画の開始・停止、タイムスタンプ記録 |
+| ログ | ローカルストレージへ直近250件保存。JSONでエクスポート可能 |
+
+## インストール・起動
+
+1. このリポジトリをクローン、またはZIPを展開。
+2. `npm install && npm run build` を実行。**配布ZIPには `dist/` も同梱**しているので、ビルドなしでも読み込めます。
+3. Chromeの `chrome://extensions` を開いて「デベロッパーモード」を有効にする。
+4. 「パッケージ化されていない拡張機能を読み込む」から **`dist/`** を選択。
+5. ツールバーのCapture Relayアイコンをクリックしてサイドパネルを表示。
+
+Chrome 116以降が必要です。
+
+### 動かし方：スクリーンショット
+
+- **ビューポート**: 対象タブの現在表示されている領域をPNGとして保存します。
+- **範囲を選択**: 対象ページでドラッグします。Escapeで取り消し。
+- **DOM要素を選択**: 対象ページで要素をクリックします。要素の矩形を保存し、CSSセレクタをトリガー欄に反映します。
+
+### 動かし方：録画・録音
+
+1. 収録ソースを選択（現在のタブ／共有画面／マイク）。
+2. **ソースを準備** を押す。タブ録画は現在アクティブなタブが対象です。共有画面ではChromeの共有ダイアログから選択します。
+3. **録画開始** → **停止・保存**。`capture-relay/` 以下にWebMを保存します。
+4. DOMトリガーで録画開始したい場合は、先に手順2でストリームを確保してからトリガールールを有効にします。**サイドパネルは閉じないでください。**
+
+### 動かし方：DOMトリガー
+
+例：`.modal[data-state="open"]` がDOMに現れたら、その領域を撮影する。
+
+- CSSセレクタ：`.modal[data-state="open"]`
+- 条件：`要素が現れる`
+- アクション：`PNGを保存`
+- `PNGをセレクタの領域に切り抜く`：ON
+- 「監視開始」で有効化。
+
+要素の出現/消失は `MutationObserver` 、クリックはキャプチャフェーズのイベントリスナーで検知します。開始時に存在する要素は「出現」とは判定しません。一度消えて再出現したタイミングが対象です。クリック/変化の重複発火防止に800msのクールダウンがあります。`captureVisibleTab()` のAPI制限を考慮し、自動撮影はさらに900ms以上あけます。
+
+## 既知の制約
+
+- **ネイティブOS範囲選択は未実装。** Chrome内で選択できるのはタブのPNG範囲です。画面全体の特定範囲を動画化したり、他アプリ上に選択オーバーレイを表示するにはネイティブヘルパー等が必要です。
+- **動画のDOM矩形クロップは未実装。** 現在の選択範囲切り抜きは静止画のみです。
+- **録画はパネル存続中のみ。** パネルを閉じると録画・未保存メディアが失われます。バックグラウンド常駐はOffscreen Document方式へ拡張する余地があります。
+- **共有画面の音声** の有無はOS/Chrome/共有対象次第です。複数の音声ソースのミキシングは未実装です。
+- **選択済み別タブの静止画** は対象タブをアクティブにしてから `captureVisibleTab()` します。非アクティブタブをそのまま撮影する機能ではありません。
+- `tabCapture` は拡張からユーザー操作を受けて権限を得たアクティブタブでのみ使えます。対象タブを切り替えた後にストリーム取得が拒否される場合は、対象タブ上で拡張機能アイコンを開き直してください。
+- `chrome://` 等の保護ページへのDOMスクリプト注入はできません。
+- **DOMイベント時刻と動画フレームは完全同期しません。** ログにイベントのエポックミリ秒と録画開始からのオフセットを記録し、後編集用に関連付けます。MediaRecorderのエンコード・通知は非同期です。
+- トリガーで録画開始/停止する場合は、準備済みストリームと開いたサイドパネルが必要です。パネルが閉じていれば記録操作は実行されません。
+- ページ内のCSS変化のみでDOMの属性/構造が変わらない場合、`MutationObserver` の出現判定では捕捉できません。CSS可視性の変化やページ側のカスタムイベント、ネットワーク通信による変化は未対応です。
+- 同時に設定できるトリガーは1ルール/1タブ。監視対象タブのページ移動では再注入を試みますが、制限URLには再注入できません。
+
+## 設計
+
+```text
+src/panel.ts      UI / MediaStream / MediaRecorder / DOMトリガーの録画操作
+src/content.ts    DOM picker / CSSセレクタ / MutationObserver / click監視
+src/background.ts Service Worker / PNGのキャプチャ・クロップ・保存 / ログ永続化
+src/rect.ts       矩形変換・ファイル名生成
+src/types.d.ts    必要なChrome拡張API・メッセージ定義（最小限）
+public/           manifest.json / UI HTML / CSS
+scripts/          ビルド後の静的ファイルコピー
+```
+
+`chrome.runtime.sendMessage` で `CAPTURE` / `ARM_TRIGGER` / `TRIGGER_FIRED` 等を受け渡し、撮影はService Worker、動画・音声はサイドパネルのMediaRecorderが担当します。ロギングは `chrome.storage.local` を使用。UIはプロトタイプの依存最小化を優先して **vanilla TypeScript** で実装しています（React未使用）。
+
+### 権限
+
+`sidePanel`, `tabs`, `activeTab`, `scripting`, `downloads`, `storage`, `tabCapture`、および `http://*/*`, `https://*/*` のホスト権限を使用します。`host_permissions` を広めに取っている理由は、ユーザーが指定したタブのDOMを監視するスクリプトをオンデマンド注入するためです。撮影・監視対象はユーザーがUIで指定したタブに限定しています。データはローカル保存のみです。
+
+## 開発
+
+```bash
+npm install
+npm run typecheck
+npm run build
+npm test
+```
+
+CIは未設定。`@types/chrome` に依存せず、Chrome APIのこの試作で利用する部分だけを手動宣言しています。将来の拡張では公式定義型を依存に追加して型の網羅性を高めてください。
+
+## GitHubに新規のprivateリポジトリを作る
+
+GitHub CLI認証後、プロジェクトディレクトリ内で実行します。
+
+```bash
+gh auth login
+git init -b main
+git add .
+git commit -m "feat: initial Capture Relay prototype"
+gh repo create hndrr/capture-relay --private --source=. --remote=origin --push
+```
+
+※既にGit管理済みの場合は `git init` と最初のcommitを省略できます。リポジトリ名を変更するなら最後のコマンドの `hndrr/capture-relay` を変更してください。
