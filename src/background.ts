@@ -2,14 +2,28 @@ import { clampCaptureRect, exportFilename } from './rect.js';
 
 const LOG_KEY = 'captureRelayEvents';
 const ARMED_KEY = 'captureRelayArmed';
+const SETTINGS_KEY = 'captureRelaySettings';
 let savingLogs: Promise<void> = Promise.resolve();
 const lastAutoCapture = new Map<number, number>();
 
+async function readSaveSettings(): Promise<SaveSettings> {
+  const data = await chrome.storage.local.get(SETTINGS_KEY);
+  const raw = data[SETTINGS_KEY] as Partial<SaveSettings> | undefined;
+  return {
+    saveFolder: typeof raw?.saveFolder === 'string' && raw.saveFolder.trim() ? raw.saveFolder : 'capture-relay',
+    saveAs: Boolean(raw?.saveAs),
+  };
+}
+
 chrome.runtime.onInstalled.addListener(() => {
-  void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+  void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
 });
 // Service workers may restart: set the action behavior whenever started as well.
-void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
+
+chrome.action.onClicked.addListener(tab => {
+  void chrome.sidePanel.open({ windowId: tab.windowId });
+});
 
 async function appendLog(record: EventRecord): Promise<void> {
   savingLogs = savingLogs.catch(() => undefined).then(async () => {
@@ -56,8 +70,10 @@ async function capture(message: Extract<ExtMessage, { type: 'CAPTURE' }>): Promi
       bitmap.close();
     }
   }
-  const filename = exportFilename(message.prefix ?? 'screenshot', Date.now(), 'png');
-  await chrome.downloads.download({ url: finalData, filename, saveAs: false });
+  const settings = await readSaveSettings();
+  const filename = exportFilename(message.prefix ?? 'screenshot', Date.now(), 'png', settings.saveFolder);
+  const saveAs = message.prefix === 'trigger' ? false : settings.saveAs;
+  await chrome.downloads.download({ url: finalData, filename, saveAs });
   await log('screenshot', filename, message.tabId);
   return filename;
 }
@@ -108,7 +124,7 @@ async function onTrigger(message: TriggerFired, tabId: number): Promise<void> {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
-  if (message.type === 'CONFIGURE_RULE' || message.type === 'PICK') return;
+  if (message.type === 'CONFIGURE_RULE' || message.type === 'PICK' || message.type === 'SET_RECORD_GUIDE' || message.type === 'RECORD_GUIDE_MOVED') return;
   const work = async (): Promise<ExtResponse> => {
     try {
       switch (message.type) {

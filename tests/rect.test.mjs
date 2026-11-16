@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clampCaptureRect, exportFilename } from '../dist/rect.js';
+import { clampCaptureRect, exportFilename, sanitizeSaveFolder } from '../dist/rect.js';
 
 test('crops CSS pixel rect into screenshot pixel dimensions', () => {
   assert.deepEqual(
@@ -23,4 +23,12 @@ test('rejects invalid and out-of-bounds rects', () => {
 
 test('export filename sanitizes names and stays under capture-relay/', () => {
   assert.equal(exportFilename('../../secret', 0, 'png'), 'capture-relay/1970-01-01T00-00-00-000Z_------secret.png');
+});
+
+test('sanitizeSaveFolder normalizes custom folders and strips traversal', () => {
+  assert.equal(sanitizeSaveFolder('projects/demo'), 'projects/demo');
+  assert.equal(sanitizeSaveFolder('/../foo\\bar/../'), 'foo/bar');
+  assert.equal(sanitizeSaveFolder('CON/nul./foo. '), '_CON/_nul/foo');
+  assert.equal(sanitizeSaveFolder('   '), 'capture-relay');
+  assert.equal(exportFilename('clip', 0, 'webm', 'my-shots'), 'my-shots/1970-01-01T00-00-00-000Z_clip.webm');
 });

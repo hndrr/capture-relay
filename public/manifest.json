@@ -7,6 +7,6 @@
   "action": { "default_title": "Capture Relay を開く" },
   "background": { "service_worker": "background.js", "type": "module" },
   "side_panel": { "default_path": "panel.html" },
-  "permissions": ["sidePanel", "tabs", "activeTab", "scripting", "downloads", "storage", "tabCapture"],
-  "host_permissions": ["http://*/*", "https://*/*"]
+  "permissions": ["sidePanel", "tabs", "activeTab", "scripting", "downloads", "storage", "tabCapture", "desktopCapture"],
+  "host_permissions": ["<all_urls>"]
 }

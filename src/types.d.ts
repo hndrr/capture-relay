@@ -5,6 +5,7 @@ type TriggerWhen = 'appear' | 'disappear' | 'click';
 type TriggerAction = 'screenshot' | 'start' | 'stop' | 'mark';
 type TriggerRule = { selector: string; when: TriggerWhen; action: TriggerAction; crop: boolean };
 type ArmedRule = { tabId: number; rule: TriggerRule };
+type SaveSettings = { saveFolder: string; saveAs: boolean };
 type EventRecord = {
   id: string;
   timestamp: number;
@@ -24,6 +25,8 @@ type ExtMessage =
   | { type: 'DISARM_TRIGGER'; tabId: number }
   | { type: 'CONFIGURE_RULE'; tabId: number; rule: TriggerRule | null }
   | { type: 'PICK'; mode: 'element' | 'region' }
+  | { type: 'SET_RECORD_GUIDE'; rect: BoxRect | null; selector?: string }
+  | { type: 'RECORD_GUIDE_MOVED'; rect: BoxRect; viewport: ViewSize }
   | { type: 'CAPTURE'; tabId: number; rect?: BoxRect; viewport?: ViewSize; prefix?: string }
   | { type: 'ADD_LOG'; record: EventRecord }
   | TriggerFired;
@@ -37,9 +40,14 @@ declare namespace chrome {
       addListener(callback: (message: ExtMessage, sender: MessageSender, sendResponse: (response: ExtResponse) => void) => boolean | void): void;
     };
     function sendMessage<T = unknown>(message: ExtMessage): Promise<ExtResponse<T>>;
+    function getURL(path: string): string;
+  }
+  namespace action {
+    const onClicked: { addListener(callback: (tab: tabs.Tab) => void): void };
   }
   namespace sidePanel {
     function setPanelBehavior(options: { openPanelOnActionClick: boolean }): Promise<void>;
+    function open(options: { windowId?: number; tabId?: number }): Promise<void>;
   }
   namespace tabs {
     type Tab = { id?: number; windowId: number; active: boolean; url?: string; title?: string; favIconUrl?: string };
@@ -48,6 +56,9 @@ declare namespace chrome {
     function query(options: { currentWindow?: boolean; active?: boolean; windowId?: number }): Promise<Tab[]>;
     function get(tabId: number): Promise<Tab>;
     function update(tabId: number, options: { active: boolean }): Promise<Tab>;
+    function create(options: { url: string }): Promise<Tab>;
+    function getCurrent(): Promise<Tab | undefined>;
+    function remove(tabIds: number | number[]): Promise<void>;
     function captureVisibleTab(windowId?: number, options?: { format?: 'png' | 'jpeg' }): Promise<string>;
     function sendMessage<T = unknown>(tabId: number, message: ExtMessage): Promise<ExtResponse<T>>;
   }
@@ -59,6 +70,13 @@ declare namespace chrome {
   }
   namespace tabCapture {
     function getMediaStreamId(options: { targetTabId?: number }): Promise<string>;
+  }
+  namespace desktopCapture {
+    type DesktopCaptureSourceType = 'screen' | 'window' | 'tab' | 'audio';
+    function chooseDesktopMedia(
+      sources: DesktopCaptureSourceType[],
+      callback: (streamId: string, options?: { canRequestAudioTrack?: boolean }) => void,
+    ): number;
   }
   namespace storage {
     type StorageData = { [key: string]: unknown };

@@ -17,34 +17,44 @@
       <main>
         <section class="card">
           <div class="section-title"><span class="step">01</span><h2>対象タブ</h2><button id="refresh-tabs" class="text-button" type="button">更新</button></div>
-          <label for="target-tab">キャプチャ対象</label>
           <select id="target-tab" aria-label="対象タブ"></select>
           <div id="tab-info" class="muted small"></div>
         </section>
         <section class="card">
-          <div class="section-title"><span class="step">02</span><h2>静止画</h2></div>
-          <p class="muted">表示中のタブをPNGで保存します。</p>
-          <div class="button-grid"><button id="shot-view" type="button">ビューポート</button><button id="shot-region" type="button">範囲を選択</button><button id="shot-element" type="button">DOM要素を選択</button></div>
+          <div class="section-title"><span class="step">02</span><h2>保存先</h2></div>
+          <label for="save-folder">フォルダ（Downloads内）</label>
+          <input id="save-folder" placeholder="capture-relay" spellcheck="false" />
+          <label class="check-row" style="margin-top:10px;margin-bottom:0"><input id="save-as" type="checkbox" /> 毎回保存先を選ぶ</label>
         </section>
         <section class="card">
-          <div class="section-title"><span class="step">03</span><h2>録画・録音</h2><span id="rec-badge" class="status-badge">未準備</span></div>
-          <label for="capture-source">収録ソース</label>
-          <select id="capture-source"><option value="tab">現在のタブ（映像＋タブ音声）</option><option value="display">画面・ウィンドウ・別タブ（共有画面選択）</option><option value="mic">マイクのみ（音声）</option></select>
-          <p class="muted small">トリガーから録画を始めるには、先にソースを準備してください。画面共有にはChromeの許可が必要です。</p>
-          <div class="button-grid two"><button id="prepare" class="secondary" type="button">① ソースを準備</button><button id="release" class="secondary" type="button" disabled>解放</button><button id="record-start" class="primary" type="button" disabled>● 録画開始</button><button id="record-stop" type="button" disabled>■ 停止・保存</button></div>
-          <div id="record-info" class="muted small">録画中はサイドパネルを閉じないでください。</div>
+          <div class="section-title"><span class="step">03</span><h2>静止画</h2></div>
+          <div class="button-grid"><button id="shot-view" type="button">画面全体</button><button id="shot-region" type="button">範囲指定</button><button id="shot-element" type="button">要素指定</button></div>
         </section>
         <section class="card">
-          <div class="section-title"><span class="step">04</span><h2>DOMトリガー</h2><span id="armed-badge" class="status-badge">OFF</span></div>
+          <div class="section-title"><span class="step">04</span><h2>録画</h2><span id="rec-badge" class="status-badge">待機中</span></div>
+          <label for="capture-source">対象</label>
+          <select id="capture-source"><option value="current-tab">現在のタブ</option><option value="tab">タブを選択</option><option value="display">画面・ウィンドウ</option></select>
+          <div class="button-grid" style="margin-top:8px"><button id="pick-rec-region" class="secondary" type="button">範囲指定</button><button id="pick-rec-element" class="secondary" type="button">要素指定</button><button id="clear-rec-area" class="secondary" type="button" disabled>全体に戻す</button></div>
+          <div id="rec-area-info" class="muted small" style="margin-top:6px">範囲: 全体</div>
+          <div class="button-grid two" style="margin-top:8px"><button id="record-start" class="primary" type="button">● 録画</button><button id="record-stop" type="button" disabled>■ 停止</button><button id="prepare" class="secondary" type="button">事前準備</button><button id="release" class="secondary" type="button" disabled>解除</button></div>
+          <div id="record-info" class="muted small" style="margin-top:8px">WebM 形式で保存</div>
+        </section>
+        <section class="card">
+          <div class="section-title"><span class="step">05</span><h2>録音</h2><span id="mic-badge" class="status-badge">待機中</span></div>
+          <div class="button-grid two"><button id="mic-start" class="primary" type="button">● 録音</button><button id="mic-stop" type="button" disabled>■ 停止</button></div>
+          <button id="grant-mic" class="secondary" type="button" style="width:100%;margin-top:8px" hidden>マイク許可タブを開く</button>
+          <div id="mic-info" class="muted small" style="margin-top:8px">WAV 形式で保存</div>
+        </section>
+        <section class="card">
+          <div class="section-title"><span class="step">06</span><h2>DOMトリガー</h2><span id="armed-badge" class="status-badge">OFF</span></div>
           <label for="selector">CSSセレクタ</label>
           <div class="input-row"><input id="selector" placeholder=".modal[data-state='open']" spellcheck="false" /><button id="pick-selector" type="button" class="secondary mini">選択</button></div>
-          <div class="two-col"><div><label for="trigger-when">条件</label><select id="trigger-when"><option value="appear">要素が現れる</option><option value="disappear">要素が消える</option><option value="click">要素をクリック</option></select></div><div><label for="trigger-action">アクション</label><select id="trigger-action"><option value="screenshot">PNGを保存</option><option value="start">録画開始</option><option value="stop">録画停止</option><option value="mark">時刻を記録</option></select></div></div>
-          <label class="check-row"><input id="crop-trigger" type="checkbox" checked /> PNGをセレクタの領域に切り抜く</label>
-          <div class="button-grid two"><button id="arm-trigger" class="primary" type="button">監視開始</button><button id="disarm-trigger" type="button" disabled>監視停止</button></div>
-          <p class="muted small">DOM変化・クリックを検知。録画開始/停止の自動実行は、準備済みのストリームと開いたサイドパネルが必要です。</p>
+          <div class="two-col"><div><label for="trigger-when">条件</label><select id="trigger-when"><option value="appear">出現</option><option value="disappear">消失</option><option value="click">クリック</option></select></div><div><label for="trigger-action">操作</label><select id="trigger-action"><option value="screenshot">PNG保存</option><option value="start">録画開始</option><option value="stop">録画停止</option><option value="mark">時刻記録</option></select></div></div>
+          <label class="check-row"><input id="crop-trigger" type="checkbox" checked /> 対象要素を切り抜く</label>
+          <div class="button-grid two"><button id="arm-trigger" class="primary" type="button">監視開始</button><button id="disarm-trigger" type="button" disabled>停止</button></div>
         </section>
         <section class="card">
-          <div class="section-title"><span class="step">05</span><h2>イベントログ</h2><button id="export-log" class="text-button" type="button">JSON出力</button></div>
+          <div class="section-title"><span class="step">07</span><h2>ログ</h2><button id="export-log" class="text-button" type="button">JSON保存</button></div>
           <div id="events" class="event-list" aria-live="polite"><p class="muted small">イベントはありません。</p></div>
         </section>
       </main>
