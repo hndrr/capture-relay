@@ -16,10 +16,14 @@ async function readSaveSettings(): Promise<SaveSettings> {
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+  void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
 });
 // Service workers may restart: set the action behavior whenever started as well.
-void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
+
+chrome.action.onClicked.addListener(tab => {
+  void chrome.sidePanel.open({ windowId: tab.windowId });
+});
 
 async function appendLog(record: EventRecord): Promise<void> {
   savingLogs = savingLogs.catch(() => undefined).then(async () => {

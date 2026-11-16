@@ -40,8 +40,12 @@ declare namespace chrome {
     function sendMessage<T = unknown>(message: ExtMessage): Promise<ExtResponse<T>>;
     function getURL(path: string): string;
   }
+  namespace action {
+    const onClicked: { addListener(callback: (tab: tabs.Tab) => void): void };
+  }
   namespace sidePanel {
     function setPanelBehavior(options: { openPanelOnActionClick: boolean }): Promise<void>;
+    function open(options: { windowId?: number; tabId?: number }): Promise<void>;
   }
   namespace tabs {
     type Tab = { id?: number; windowId: number; active: boolean; url?: string; title?: string; favIconUrl?: string };
