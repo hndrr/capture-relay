@@ -121,20 +121,20 @@ function updateControls(): void {
   const isRecording = session?.recorder?.state === 'recording';
   controls.prepare.disabled = busy || session !== null;
   controls.release.disabled = busy || session === null || isRecording;
-  controls.start.disabled = busy || session === null || Boolean(isRecording);
+  controls.start.disabled = busy || Boolean(isRecording);
   controls.stop.disabled = busy || !isRecording;
   controls.source.disabled = busy || session !== null;
   controls.arm.disabled = busy || selectedTabId === null;
   controls.disarm.disabled = busy || armedTabId === null;
   controls.recordBadge.className = `status-badge${isRecording ? ' recording' : session ? ' active' : ''}`;
-  controls.recordBadge.textContent = isRecording ? '● REC' : session ? '準備済み' : '未準備';
+  controls.recordBadge.textContent = isRecording ? '● 録画中' : session ? '準備OK' : '待機中';
   controls.armedBadge.className = `status-badge${armedTabId !== null ? ' active' : ''}`;
   controls.armedBadge.textContent = armedTabId !== null ? 'ON' : 'OFF';
   if (session?.startedAt && isRecording) {
     const seconds = Math.floor((Date.now() - session.startedAt) / 1000);
-    controls.recordInfo.textContent = `録画中 ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} · 停止するとWebMを保存します。`;
+    controls.recordInfo.textContent = `録画中 ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} · 「■ 停止して保存」を押すと WebM を保存します。`;
   } else if (session) {
-    controls.recordInfo.textContent = 'ソースを確保済み。手動またはDOMトリガーで録画を開始できます。';
+    controls.recordInfo.textContent = '準備OK。手動またはDOMトリガーで録画を開始できます。';
   } else {
     controls.recordInfo.textContent = '録画中はサイドパネルを閉じないでください。';
   }
@@ -202,7 +202,16 @@ async function prepare(): Promise<void> {
   if (source === 'tab') {
     // Call immediately in the button gesture: tabCapture checks user activation.
     // The target tab must already be active (the tab selector activates it).
-    const id = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId() });
+    let id: string;
+    try {
+      id = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId() });
+    } catch (error) {
+      const detail = humanError(error);
+      if (detail.includes('activeTab') || detail.includes('invoked')) {
+        throw new Error('このタブの録画権限がまだ有効になっていません。録画したいタブを開いた状態でブラウザ右上の Capture Relay アイコンを一度クリックするか、対象を「画面・ウィンドウを選択」に切り替えてください。');
+      }
+      throw error;
+    }
     // `chromeMediaSourceId` is Chrome-specific and not part of standard TS DOM types.
     const audio = { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: id } };
     const video = { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: id } };
@@ -259,8 +268,12 @@ async function saveBlob(blob: Blob, filename: string): Promise<void> {
 }
 
 async function startRecording(trigger?: TriggerFired): Promise<void> {
+  if (!session) {
+    if (trigger) throw new Error('DOMトリガーで自動録画するには、先に「事前準備（トリガー用）」を押してください。');
+    await prepare();
+  }
   const active = session;
-  if (!active) throw new Error('録画ソースが未準備です。');
+  if (!active) throw new Error('録画ソースの準備に失敗しました。');
   if (active.recorder?.state === 'recording') return;
   if (trigger && active.tabId !== undefined && active.tabId !== trigger.tabId) throw new Error('DOMトリガーのタブと収録タブが一致しません。');
   if (!active.stream.active) throw new Error('収録ストリームが終了しています。');
