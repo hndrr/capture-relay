@@ -13,7 +13,10 @@ const controls = {
   action: $<HTMLSelectElement>('trigger-action'),
   crop: $<HTMLInputElement>('crop-trigger'),
   source: $<HTMLSelectElement>('capture-source'),
-  recordArea: $<HTMLSelectElement>('record-area'),
+  pickRecRegion: $<HTMLButtonElement>('pick-rec-region'),
+  pickRecElement: $<HTMLButtonElement>('pick-rec-element'),
+  clearRecArea: $<HTMLButtonElement>('clear-rec-area'),
+  recAreaInfo: $<HTMLDivElement>('rec-area-info'),
   notice: $<HTMLDivElement>('notice'),
   recordInfo: $<HTMLDivElement>('record-info'),
   recordBadge: $<HTMLSpanElement>('rec-badge'),
@@ -39,7 +42,6 @@ const ARMED_KEY = 'captureRelayArmed';
 const SETTINGS_KEY = 'captureRelaySettings';
 
 type CaptureSource = 'current-tab' | 'tab' | 'display' | 'mic';
-type RecordArea = 'full' | 'region' | 'element';
 type StreamSession = {
   source: CaptureSource;
   stream: MediaStream;
@@ -55,6 +57,7 @@ type StreamSession = {
 let session: StreamSession | null = null;
 let selectedTabId: number | null = null;
 let armedTabId: number | null = null;
+let pendingRecPick: PickResult | null = null;
 let saveSettings: SaveSettings = { saveFolder: 'capture-relay', saveAs: false };
 let events: EventRecord[] = [];
 let busy = false;
@@ -134,14 +137,14 @@ function updateControls(): void {
   controls.start.disabled = busy || Boolean(isRecording) || isMicSession;
   controls.stop.disabled = busy || !isVideoRecording;
   controls.source.disabled = busy || session !== null;
-  controls.recordArea.disabled = busy || session !== null || controls.source.value === 'display';
-  if (controls.source.value === 'display' && session === null) controls.recordArea.value = 'full';
-  const area = controls.recordArea.value as RecordArea;
-  controls.start.textContent = session !== null || area === 'full'
-    ? '● 録画'
-    : area === 'region'
-      ? '範囲指定'
-      : '要素指定';
+  const isDisplay = controls.source.value === 'display';
+  if (isDisplay && session === null) pendingRecPick = null;
+  controls.pickRecRegion.disabled = busy || session !== null || isDisplay;
+  controls.pickRecElement.disabled = busy || session !== null || isDisplay;
+  controls.clearRecArea.disabled = busy || session !== null || pendingRecPick === null;
+  controls.recAreaInfo.textContent = pendingRecPick
+    ? `範囲: ${Math.round(pendingRecPick.rect.width)}×${Math.round(pendingRecPick.rect.height)}`
+    : '範囲: 全体';
 
   controls.micStart.disabled = busy || Boolean(isRecording) || isVideoSession;
   controls.micStop.disabled = busy || !isMicRecording;
@@ -310,13 +313,8 @@ async function createCroppedStream(
 async function prepare(sourceOverride?: CaptureSource): Promise<void> {
   if (session) throw new Error('先に現在のソースを解放してください。');
   const source = sourceOverride ?? (controls.source.value as CaptureSource);
-  const area: RecordArea = source === 'mic' ? 'full' : (controls.recordArea.value as RecordArea);
-  let picked: PickResult | null = null;
-  if (area !== 'full') {
-    if (source === 'display') throw new Error('範囲・DOM要素の録画は「現在のタブ」または「Chrome タブを選択」でのみ利用できます。');
-    picked = await injectPicker(area);
-    if (picked.selector) controls.selector.value = picked.selector;
-  }
+  const picked = source === 'mic' ? null : pendingRecPick;
+  if (picked && source === 'display') throw new Error('範囲・DOM要素の録画は「現在のタブ」または「タブを選択」でのみ利用できます。');
   let stream: MediaStream;
   let rawStream: MediaStream | undefined;
   let cleanupCrop: (() => void) | undefined;
@@ -550,7 +548,15 @@ function wire(): void {
     status(`選択: ${picked.selector ?? ''}`);
   }));
   controls.source.addEventListener('change', updateControls);
-  controls.recordArea.addEventListener('change', updateControls);
+  const pickRecordArea = async (mode: 'region' | 'element'): Promise<void> => {
+    const picked = await injectPicker(mode);
+    pendingRecPick = picked;
+    if (picked.selector) controls.selector.value = picked.selector;
+    status(`録画範囲を設定: ${Math.round(picked.rect.width)}×${Math.round(picked.rect.height)}`);
+  };
+  controls.pickRecRegion.addEventListener('click', () => void run(() => pickRecordArea('region')));
+  controls.pickRecElement.addEventListener('click', () => void run(() => pickRecordArea('element')));
+  controls.clearRecArea.addEventListener('click', () => { pendingRecPick = null; updateControls(); status('録画範囲を「全体」に戻しました。'); });
   controls.prepare.addEventListener('click', () => void run(() => prepare()));
   controls.grantMic.addEventListener('click', () => void run(async () => {
     await chrome.tabs.create({ url: chrome.runtime.getURL('panel.html?grantMic=1') });

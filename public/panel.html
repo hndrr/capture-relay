@@ -32,11 +32,11 @@
         </section>
         <section class="card">
           <div class="section-title"><span class="step">04</span><h2>録画</h2><span id="rec-badge" class="status-badge">待機中</span></div>
-          <div class="two-col" style="margin-top:0">
-            <div><label for="capture-source">対象</label><select id="capture-source"><option value="current-tab">現在のタブ</option><option value="tab">タブを選択</option><option value="display">画面・ウィンドウ</option></select></div>
-            <div><label for="record-area">範囲</label><select id="record-area"><option value="full">全体</option><option value="region">範囲指定</option><option value="element">要素指定</option></select></div>
-          </div>
-          <div class="button-grid two"><button id="record-start" class="primary" type="button">● 録画</button><button id="record-stop" type="button" disabled>■ 停止</button><button id="prepare" class="secondary" type="button">事前準備</button><button id="release" class="secondary" type="button" disabled>解除</button></div>
+          <label for="capture-source">対象</label>
+          <select id="capture-source"><option value="current-tab">現在のタブ</option><option value="tab">タブを選択</option><option value="display">画面・ウィンドウ</option></select>
+          <div class="button-grid" style="margin-top:8px"><button id="pick-rec-region" class="secondary" type="button">範囲指定</button><button id="pick-rec-element" class="secondary" type="button">要素指定</button><button id="clear-rec-area" class="secondary" type="button" disabled>全体に戻す</button></div>
+          <div id="rec-area-info" class="muted small" style="margin-top:6px">範囲: 全体</div>
+          <div class="button-grid two" style="margin-top:8px"><button id="record-start" class="primary" type="button">● 録画</button><button id="record-stop" type="button" disabled>■ 停止</button><button id="prepare" class="secondary" type="button">事前準備</button><button id="release" class="secondary" type="button" disabled>解除</button></div>
           <div id="record-info" class="muted small" style="margin-top:8px">WebM 形式で保存</div>
         </section>
         <section class="card">
